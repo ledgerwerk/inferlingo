@@ -216,3 +216,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+inferlingo/_version.py
+context_inferlingo*.*
