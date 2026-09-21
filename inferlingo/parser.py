@@ -214,6 +214,7 @@ def _ends_statement(text: str) -> bool:
 
 
 def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = True) -> Program:
+    """Parse facts and rules into a `Program`, validating strict safety by default."""
     clauses: list[Clause] = []
     statements: list[tuple[int, str]] = []
     pending: list[str] = []
@@ -268,6 +269,7 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
 
 
 def parse_query(text: str, *, source: str | None = "<query>") -> Query:
+    """Parse a query into alternatives of positive and negative literals."""
     try:
         cleaned = strip_sentence(text)
         if not cleaned:

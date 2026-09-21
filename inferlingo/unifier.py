@@ -39,6 +39,7 @@ class ExactUnifier:
     """Only same-wording variable unification; never contacts a model."""
 
     async def unify_sentences(self, goal: Sentence, candidate: Sentence) -> Unification:
+        """Unify parsed sentences using exact wording and return bindings."""
         bindings = match_sentences(goal, candidate)
         if bindings is None:
             return Unification(False, method="exact", confidence=0.0, note="Different wording.")
@@ -51,6 +52,7 @@ class ExactUnifier:
         )
 
     async def unify(self, goal: str, candidate: str) -> Unification:
+        """Unify two sentence strings without contacting a semantic backend."""
         bindings = match_wording(goal, candidate)
         if bindings is None:
             return Unification(False, method="exact", confidence=0.0, note="Different wording.")
@@ -61,6 +63,7 @@ class ExactUnifier:
         goal: Sentence,
         candidates: Sequence[Sentence],
     ) -> Sequence[Unification]:
+        """Unify one parsed goal against several candidates concurrently."""
         return tuple(await asyncio.gather(*(self.unify_sentences(goal, candidate) for candidate in candidates)))
 
 
@@ -106,6 +109,7 @@ class PyJevUnifier:
         cache_size: int = 2048,
         semantic_batch_size: int = 32,
     ) -> None:
+        """Configure the optional backend, thresholds, concurrency, batch size, and cache."""
         if not 0 <= align_threshold <= 1:
             raise ValueError("align_threshold must be between 0 and 1")
         if not 0 <= match_threshold <= 1:
@@ -153,6 +157,7 @@ class PyJevUnifier:
             return await self._jev.choice(question, state=state, choices=choices, model=self.model)
 
     async def unify(self, goal: str, candidate: str) -> Unification:
+        """Unify sentence strings exactly first, then verify semantic equivalence when needed."""
         exact = match_wording(goal, candidate)
         if exact is not None:
             return Unification(True, bindings=exact, method="exact", confidence=1.0, note="Same wording.")
@@ -181,6 +186,7 @@ class PyJevUnifier:
         goal: Sentence,
         candidates: Sequence[Sentence],
     ) -> Sequence[Unification]:
+        """Batch exact and semantic unification while preserving candidate order."""
         goal_text = render_tokens(goal.tokens)
         candidate_texts = [render_tokens(candidate.tokens) for candidate in candidates]
         results: list[Unification | None] = [None] * len(candidate_texts)

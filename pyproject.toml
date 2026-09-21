@@ -39,6 +39,15 @@ dev = [
   "twine>=6,<7",
 ]
 
+docs = [
+  "sphinx>=7,<9",
+  "myst-parser>=2,<5",
+  "sphinx-rtd-theme>=2,<4",
+]
+
+[project.urls]
+Repository = "https://github.com/ledgerwerk/inferlingo"
+
 [project.scripts]
 inferlingo = "inferlingo.cli:app"
 

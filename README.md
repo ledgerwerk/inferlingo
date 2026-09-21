@@ -1,157 +1,150 @@
 # InferLingo
 
 InferLingo is a small Python rule engine for facts and rules written as readable sentences.
-Use Python to compute exact facts, InferLingo to derive consequences, and an optional semantic
-unifier when two sentences express the same fact with different wording.
+Use deterministic code to establish facts, InferLingo to derive consequences from explicit rules,
+and optional semantic unification when differently worded sentences may express the same fact.
 
-## Quick start
+InferLingo is not a chatbot, planner, arithmetic engine, source-code analyzer, or action runner.
+Python or another deterministic subsystem supplies facts. InferLingo applies the rules you write,
+builds inspectable proofs, and returns derived consequences.
+
+## Install
+
+Install the base package for deterministic inference:
 
 ```bash
-python -m pip install -e '.[dev]'
+python -m pip install inferlingo
+```
+
+The base package is fully usable offline. The Python `KnowledgeBase` API defaults to
+`ExactUnifier`, and the first CLI workflows should use `--exact-only`.
+
+Install the optional semantic backend only when differently worded sentences should be compared:
+
+```bash
+python -m pip install 'inferlingo[jev]'
+```
+
+Authentication and provider configuration belong to pyjev and its configured Jev backend.
+
+## 60-second exact example
+
+Create `rules.nl`:
+
+```text
+Alice is an employee.
+Bob is an employee.
+Bob is suspended.
+
+{person} may deploy if
+    {person} is an employee and
+    not {person} is suspended.
+```
+
+Run it without a model or network access:
+
+```bash
+inferlingo run rules.nl "{person} may deploy?" --exact-only --explain
+```
+
+The solution binds `person = Alice`. The result follows only from the facts and explicit rule.
+Negation is failure to prove the positive goal for the already-bound person, not a stored classical
+negative fact.
+
+The smallest chain is also available:
+
+```bash
 inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
-inferlingo run examples/access_policy.nl "{person} may deploy?" --exact-only --explain
-inferlingo run examples/dependency_impact.nl "{service} is affected?" --exact-only --json
 ```
 
-The exact examples require no credentials and never contact a model. The expected bindings are
-`Tweety`, `Alice`, and `auth`, `api`, `web` respectively. More examples are in `examples/README.md`.
+It derives `bird = Tweety` from the fact and rules in `examples/birds.nl`, not from outside knowledge.
 
-## Python API
+## How it fits into Python
 
 ```python
-from inferlingo import ExactUnifier, KnowledgeBase, Provenance
+from inferlingo import KnowledgeBase
 
-kb = KnowledgeBase.from_file("examples/python_lint_rules.nl", unifier=ExactUnifier())
-kb.add_fact(
-    "Function {fn} catches a broad exception",
-    fn="process_order",
-    provenance=Provenance(source="orders.py", line=81, kind="python-ast"),
+kb = KnowledgeBase.from_text(
+    """
+    Alice is an employee.
+    {person} may deploy if {person} is an employee.
+    """
 )
-kb.add_fact(
-    "Function {fn} has an exception path that does not re-raise",
-    fn="process_order",
-    provenance=Provenance(source="orders.py", line=84, kind="python-ast"),
-)
-
-result = await kb.ask("Function {fn} may swallow errors?")
-for solution in result.solutions:
-    print(solution.bindings)
-    print(solution.proof.render())
+result = kb.ask_sync("{person} may deploy?")
+print(result.solutions[0].bindings)
 ```
 
-`ask_sync()` provides the same API outside an event loop. Calling it from an active event loop
-raises a clear error, so asynchronous callers should use `await ask()`.
+The result is `{"person": "Alice"}`. Use `await kb.ask(...)` in asynchronous applications.
+`ask_sync()` must not be called from a running event loop.
 
-The lower-level API remains available:
+`KnowledgeBase.add_fact()` safely quotes injected application values and can carry
+`Provenance` metadata into proof steps:
 
 ```python
-from inferlingo import ExactUnifier, NLEngine, parse_program, parse_query
+from inferlingo import KnowledgeBase, Provenance
 
-result = await NLEngine(parse_program("Alice is known."), ExactUnifier()).run(
-    parse_query("Alice is known?")
+kb = KnowledgeBase.from_text("URL {url} is approved if URL {url} is reachable.")
+kb.add_fact(
+    "URL {url} is reachable",
+    url="https://example.com/a?x=1&y=2",
+    provenance=Provenance(source="scanner.py", line=41, kind="http-check"),
 )
 ```
 
-## Language
+## Optional semantic unification
 
-Facts and rules can use uppercase compatibility variables or descriptive braced variables:
-
-```text
-Tweety is a canary.
-{bird} is a bird if {bird} is a canary.
-{bird} can fly if {bird} is a bird.
-{person} is trusted if {person} is known and not {person} is blocked.
-```
-
-Quoted atoms preserve opaque application values exactly:
-
-```text
-Artifact "https://example.com/a" is reachable.
-User "john@example.com" is active.
-Version "3.14.2" is deployed.
-Path "/srv/app/config.yaml" exists.
-```
-
-Quoted values may contain spaces, escaped quotes, and escaped backslashes. Keywords inside a
-quoted value are ordinary text. Comments use `#`, `%`, or `//` outside quoted values.
-
-Rules are validated in strict mode. Facts must be ground, rule-head variables must occur in a
-positive condition, and negative-condition variables must be range restricted by positive
-conditions. Negation means failure to prove the positive fact. Unground negation is rejected.
-
-## Deterministic and semantic boundaries
-
-Exact unification is deterministic and offline. It handles wording, variable bindings, and
-multi-token phrases. It does not contact a model.
-
-`PyJevUnifier` is optional:
+`PyJevUnifier` first tries exact wording and only sends differently worded candidates to the
+semantic backend. Semantic matching is a same-fact equivalence check. It does not invent logical
+implications. An explicit rule is still required to derive `parent` from `father`.
 
 ```bash
-python -m pip install -e '.[dev,jev]'
+python -m pip install 'inferlingo[jev]'
 pyjev auth set
 pyjev auth test
 inferlingo run examples/family.nl "Homer is a parent of Lisa?" --explain
 ```
 
-Semantic unification recognizes equivalent statements. It does not turn implication into
-synonymy. The explicit rule in `family.nl` expresses `father -> parent`; the semantic backend
-may only recognize `Lisa's dad is Homer` and `Homer is the father of Lisa` as the same fact.
-Semantic judgments retain their checks and confidence signals. They are not theorem
-probabilities. Batched semantic candidates use bounded two-phase requests and a bounded,
-configuration-aware in-memory cache.
+The CLI uses `PyJevUnifier` by default for `run`; pass `--exact-only` to force deterministic
+offline execution. Semantic confidence and backend checks are diagnostic signals, not theorem
+probabilities.
 
-## CLI output and exit codes
+## Documentation
 
-`inferlingo validate FILE` parses a program without a backend. `inferlingo run FILE QUERY` supports:
+Read the [full documentation](https://github.com/ledgerwerk/inferlingo/tree/main/docs) for:
 
-- `--exact-only` for offline deterministic execution
-- `--json` for stable machine-readable solutions, proofs, trace, and stats
-- `--explain` for the proof attached to each solution
-- `--trace` for all search attempts, including failures and cutoffs
-- `--stats` for aggregate backend, indexing, and proof counters
-- `--debug` as a compatibility alias for `--trace`
+- [Getting started](docs/getting-started.md)
+- [Language reference](docs/language.md)
+- [Python API](docs/python-api.md)
+- [CLI guide](docs/cli.md)
+- [Semantic unification](docs/semantic-unification.md)
+- [Proofs and provenance](docs/proofs-and-provenance.md)
+- [Examples](docs/examples.md)
 
-Exit codes are:
-
-- `0`: command completed, including a query with no solutions
-- `1`: backend or runtime failure
-- `2`: invalid file, syntax, or rule-safety error
-- `130`: interrupted by the user
-
-## Architecture
-
-```text
-.nl program
-    |
-    v
-quote-aware parser and safety validation
-    |
-    v
-indexed deterministic resolver and proof paths
-    |
-    +--> exact wording and bindings
-    |
-    +--> optional batched semantic unifier
-              |
-              v
-             pyjev
-```
-
-Deterministic code computes facts. InferLingo derives logical consequences. Semantic models are
-used only at an explicit equivalence judgment boundary. InferLingo does not translate free-form
-questions, perform arithmetic, inspect source code, execute actions, or invent missing facts.
+The documentation also covers strict safety validation, quoted atoms, recursion, search limits,
+traces, debugging, development, and the generated API reference.
 
 ## Development
 
+For a source checkout, install contributor and documentation dependencies:
+
 ```bash
-pytest -q
-ruff check .
-python -m build
+python -m pip install -e '.[dev,docs]'
 ```
 
-The test suite is offline. It uses fake semantic clients for batching and does not require an API
-key.
+Run the quality checks:
+
+```bash
+python -m compileall inferlingo examples docs
+pytest
+ruff check .
+python docs/make.py html
+python -m build
+twine check dist/*
+```
+
+The test suite is offline. Semantic tests use fake or injected clients and do not require a live
+API key.
 
 ## License
 
-Apache-2.0.
+Apache-2.0

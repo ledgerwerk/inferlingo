@@ -62,7 +62,9 @@ class _RunState:
 
 
 class NLEngine:
+    """Resolve parsed queries against indexed clauses with a pluggable unifier."""
     def __init__(self, program, unifier: Unifier) -> None:
+        """Create an engine for a parsed program and unifier."""
         self.program = program
         self.unifier = unifier
         self.index = ProgramIndex(program.clauses)
@@ -75,6 +77,7 @@ class NLEngine:
         max_steps: int = 2000,
         max_solutions: int = 50,
     ) -> RunResult:
+        """Run a query with positive depth, step, and solution bounds."""
         if max_depth < 1 or max_steps < 1 or max_solutions < 1:
             raise ValueError("max_depth, max_steps, and max_solutions must be positive")
 

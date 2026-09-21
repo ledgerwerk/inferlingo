@@ -29,6 +29,7 @@ class KnowledgeBase:
         unifier: Unifier | None = None,
         strict: bool = True,
     ) -> KnowledgeBase:
+        """Create a knowledge base by parsing NL text in strict mode by default."""
         knowledge_base = cls(unifier=unifier, strict=strict)
         knowledge_base.add_text(text, source=source)
         return knowledge_base
@@ -41,6 +42,7 @@ class KnowledgeBase:
         unifier: Unifier | None = None,
         strict: bool = True,
     ) -> KnowledgeBase:
+        """Create a knowledge base from a UTF-8 file path."""
         file_path = Path(path)
         return cls.from_text(
             file_path.read_text(encoding="utf-8"),
@@ -51,9 +53,11 @@ class KnowledgeBase:
 
     @property
     def program(self) -> Program:
+        """Return the current clauses as an immutable `Program` view."""
         return Program(tuple(self._clauses))
 
     def add_text(self, text: str, *, source: str = "<memory>") -> None:
+        """Parse and append facts or rules, using the knowledge base strictness setting."""
         parsed = parse_program(text, source=source, strict=self.strict)
         self._clauses.extend(parsed.clauses)
 
@@ -99,6 +103,7 @@ class KnowledgeBase:
         max_steps: int = 2000,
         max_solutions: int = 50,
     ) -> RunResult:
+        """Asynchronously resolve a query and return its bounded run result."""
         return await NLEngine(self.program, self.unifier).run(
             parse_query(query),
             max_depth=max_depth,
@@ -107,6 +112,7 @@ class KnowledgeBase:
         )
 
     def ask_sync(self, query: str, **limits: int) -> RunResult:
+        """Resolve a query from synchronous code outside an active event loop."""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
