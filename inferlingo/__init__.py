@@ -6,8 +6,10 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 
 from .engine import NLEngine
+from .errors import InferLingoError, RuleSafetyError, UnsafeNegationError
 from .models import Clause, Literal, Program, Query, RunResult, Solution, Unification
 from .parser import ParseError, parse_program, parse_query
+from .terms import Atom, Sentence, Variable
 from .unifier import ExactUnifier, PyJevUnifier, Unifier
 
 try:
@@ -19,6 +21,8 @@ except ImportError:  # source checkout without generated setuptools-scm output
         __version__ = "0.0.0"
 
 __all__ = [
+    "Atom",
+    "InferLingoError",
     "Clause",
     "ExactUnifier",
     "Literal",
@@ -30,6 +34,10 @@ __all__ = [
     "RunResult",
     "Solution",
     "Unification",
+    "UnsafeNegationError",
+    "Variable",
+    "RuleSafetyError",
+    "Sentence",
     "Unifier",
     "__version__",
     "parse_program",

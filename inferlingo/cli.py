@@ -13,7 +13,13 @@ from .parser import ParseError, parse_program, parse_query
 from .terms import variables_in
 from .unifier import ExactUnifier, PyJevUnifier
 
-app = typer.Typer(no_args_is_help=True, add_completion=False, help="Natural-language logic with pluggable semantic unification.")
+app = typer(
+    no_args_is_help=True,
+    add_completion=False,
+    help="Natural-language logic with pluggable semantic unification.",
+)
+PROGRAM_ARGUMENT = typer.Argument(..., exists=True, dir_okay=False, readable=True)
+QUERY_ARGUMENT = typer.Argument(..., help='Goal syntax, e.g. "X is a grandfather of Bart?"')
 
 
 def _version(value: bool) -> None:
@@ -30,7 +36,7 @@ def main(
 
 
 @app.command("validate")
-def validate(program: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True)) -> None:
+def validate(program: Path = PROGRAM_ARGUMENT) -> None:
     """Parse a program without contacting Jev."""
     try:
         parsed = parse_program(program.read_text(encoding="utf-8"))
@@ -44,11 +50,19 @@ def validate(program: Path = typer.Argument(..., exists=True, dir_okay=False, re
 
 @app.command("run")
 def run_program(
-    program: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
-    query: str = typer.Argument(..., help='Goal syntax, e.g. "X is a grandfather of Bart?"'),
-    exact_only: bool = typer.Option(False, "--exact-only", help="Never contact Jev; differently worded terms do not unify."),
+    program: Path = PROGRAM_ARGUMENT,
+    query: str = QUERY_ARGUMENT,
+    exact_only: bool = typer.Option(
+        False,
+        "--exact-only",
+        help="Never contact Jev; differently worded terms do not unify.",
+    ),
     debug: bool = typer.Option(False, "--debug", help="Print every proof/unification step."),
-    model: str | None = typer.Option(None, "--model", help="Optional Jev model override for the built-in pyjev backend."),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Optional Jev model override for the built-in pyjev backend.",
+    ),
     concurrency: int = typer.Option(8, min=1, help="Maximum simultaneous semantic-backend calls."),
     max_depth: int = typer.Option(25, min=1),
     max_steps: int = typer.Option(2000, min=1),

@@ -64,3 +64,33 @@ def test_engine_is_independent_of_jev_transport():
     result = run(NLEngine(program, DadParaphraseUnifier()).run(parse_query("Homer is a parent of Lisa?")))
     assert len(result.solutions) == 1
     assert result.unification_calls == 2
+
+
+def test_rule_variable_scope_does_not_capture_query_variable_name():
+    program = parse_program(
+        """
+        Homer is a parent of Lisa.
+        Lisa is a parent of Bart.
+        Maggie is female.
+        X is a grandparent of Z if X is a parent of Y and Y is a parent of Z.
+        """
+    )
+    result = run(NLEngine(program, ExactUnifier()).run(parse_query("Homer is a grandparent of Bart and Y3 is female?")))
+    assert [solution.bindings for solution in result.solutions] == [{"Y3": "Maggie"}]
+
+
+def test_negation_order_does_not_change_safe_result():
+    for body in (
+        "not {person} is blocked and {person} is a user",
+        "{person} is a user and not {person} is blocked",
+    ):
+        program = parse_program(
+            f"""
+            Alice is a user.
+            Bob is a user.
+            Bob is blocked.
+            {{person}} is allowed if {body}.
+            """
+        )
+        result = run(NLEngine(program, ExactUnifier()).run(parse_query("{person} is allowed?")))
+        assert [solution.bindings for solution in result.solutions] == [{"person": "Alice"}]

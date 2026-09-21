@@ -8,9 +8,11 @@ from typing import Any, Protocol
 
 from .models import Check, Unification
 from .terms import (
+    Sentence,
     bind,
     candidate_phrases,
     canonicalize_pair,
+    match_sentences,
     match_wording,
     normalize,
     restore_variables,
@@ -25,6 +27,18 @@ class Unifier(Protocol):
 
 class ExactUnifier:
     """Only same-wording variable unification; never contacts a model."""
+
+    async def unify_sentences(self, goal: Sentence, candidate: Sentence) -> Unification:
+        bindings = match_sentences(goal, candidate)
+        if bindings is None:
+            return Unification(False, method="exact", confidence=0.0, note="Different wording.")
+        return Unification(
+            True,
+            bindings=bindings,
+            method="exact",
+            confidence=1.0,
+            note="Same wording.",
+        )
 
     async def unify(self, goal: str, candidate: str) -> Unification:
         bindings = match_wording(goal, candidate)
@@ -198,7 +212,10 @@ class PyJevUnifier:
             criteria: dict[str, Any] = {label: phrase for label, phrase in labels.items()}
             criteria[self.NONE] = "None of these phrases is the value of the variable"
             result = await self._choice(
-                f"The variable {variable} appears in the {side}. Which offered phrase from the other sentence does it stand for?",
+                (
+                    f"The variable {variable} appears in the {side}. "
+                    "Which offered phrase from the other sentence does it stand for?"
+                ),
                 state=state,
                 choices=criteria,
             )
@@ -245,7 +262,10 @@ class PyJevUnifier:
             choices=self.RELATIONS,
         )
         participants_task = self._noul(
-            "After filling variables, do statements A and B refer to exactly the same people and things? Different names are different individuals.",
+            (
+                "After filling variables, do statements A and B refer to exactly the same "
+                "people and things? Different names are different individuals."
+            ),
             state=verify_state,
         )
         relation, participants = await asyncio.gather(relation_task, participants_task)

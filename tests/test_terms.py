@@ -19,3 +19,14 @@ def test_candidate_phrases_are_contiguous_and_exclude_variables():
     assert "Lisa's" in phrases
     assert "Lisa's dad" in phrases
     assert "X" not in phrases
+
+
+def test_opaque_quoted_values_bind_without_punctuation_loss():
+    values = (
+        "https://example.com/a",
+        "john@example.com",
+        "3.14.2",
+        "/srv/app/config.yaml",
+    )
+    for value in values:
+        assert match_wording("Value is X", f'Value is "{value}"') == {"X": value}

@@ -27,3 +27,21 @@ def test_or_creates_rule_alternatives_and_not_is_literal_flag():
 def test_rule_head_cannot_be_negated():
     with pytest.raises(ParseError):
         parse_program("not X is safe if X is blocked.")
+
+
+def test_quoted_atoms_preserve_keywords_and_escaped_content():
+    program = parse_program(
+        r"""
+        Message "fail if unavailable and not ready" is stored.
+        Path "C:\\tmp\\a\\\"b.txt" exists.
+        """
+    )
+    assert [clause.head for clause in program.clauses] == [
+        'Message "fail if unavailable and not ready" is stored',
+        r'Path "C:\\tmp\\a\\\"b.txt" exists',
+    ]
+
+
+def test_unmatched_quote_is_a_parse_error():
+    with pytest.raises(ParseError):
+        parse_program('Message "unterminated is stored.')
