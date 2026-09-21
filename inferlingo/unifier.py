@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Protocol
 
-from .models import Check, Unification
+from .models import BackendUsage, Check, Unification
 from .terms import (
     Sentence,
     bind,
@@ -15,6 +16,7 @@ from .terms import (
     match_sentences,
     match_wording,
     normalize,
+    render_tokens,
     restore_variables,
     substitute,
     variables_in,
@@ -23,6 +25,14 @@ from .terms import (
 
 class Unifier(Protocol):
     async def unify(self, goal: str, candidate: str) -> Unification: ...
+
+
+class BatchUnifier(Unifier, Protocol):
+    async def unify_many(
+        self,
+        goal: Sentence,
+        candidates: Sequence[Sentence],
+    ) -> Sequence[Unification]: ...
 
 
 class ExactUnifier:
@@ -45,6 +55,13 @@ class ExactUnifier:
         if bindings is None:
             return Unification(False, method="exact", confidence=0.0, note="Different wording.")
         return Unification(True, bindings=bindings, method="exact", confidence=1.0, note="Same wording.")
+
+    async def unify_many(
+        self,
+        goal: Sentence,
+        candidates: Sequence[Sentence],
+    ) -> Sequence[Unification]:
+        return tuple(await asyncio.gather(*(self.unify_sentences(goal, candidate) for candidate in candidates)))
 
 
 AskNoul = Callable[..., Awaitable[Any]]
@@ -86,6 +103,8 @@ class PyJevUnifier:
         align_threshold: float = ALIGN_THRESHOLD,
         match_threshold: float = MATCH_THRESHOLD,
         concurrency: int = 8,
+        cache_size: int = 2048,
+        semantic_batch_size: int = 32,
     ) -> None:
         if not 0 <= align_threshold <= 1:
             raise ValueError("align_threshold must be between 0 and 1")
@@ -93,12 +112,18 @@ class PyJevUnifier:
             raise ValueError("match_threshold must be between 0 and 1")
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
+        if cache_size < 1:
+            raise ValueError("cache_size must be at least 1")
+        if semantic_batch_size < 1:
+            raise ValueError("semantic_batch_size must be at least 1")
 
         self.model = model
         self.align_threshold = align_threshold
         self.match_threshold = match_threshold
+        self.semantic_batch_size = semantic_batch_size
+        self.cache_size = cache_size
         self._semaphore = asyncio.Semaphore(concurrency)
-        self._cache: dict[tuple[str, str], asyncio.Task[Unification]] = {}
+        self._cache: OrderedDict[tuple[Any, ...], asyncio.Task[Unification]] = OrderedDict()
         self._owns_jev = jev is None
         if jev is None:
             try:
@@ -133,12 +158,15 @@ class PyJevUnifier:
             return Unification(True, bindings=exact, method="exact", confidence=1.0, note="Same wording.")
 
         canonical_goal, canonical_candidate, restore = canonicalize_pair(goal, candidate)
-        key = (canonical_goal, canonical_candidate)
+        key = self._cache_key(canonical_goal, canonical_candidate)
         cached = key in self._cache
         task = self._cache.get(key)
         if task is None:
             task = asyncio.create_task(self._semantic_unify(canonical_goal, canonical_candidate))
             self._cache[key] = task
+            self._trim_cache()
+        else:
+            self._cache.move_to_end(key)
         try:
             result = await task
         except Exception:
@@ -146,29 +174,209 @@ class PyJevUnifier:
                 self._cache.pop(key, None)
             raise
 
+        return self._restore_result(result, restore, cached)
+
+    async def unify_many(
+        self,
+        goal: Sentence,
+        candidates: Sequence[Sentence],
+    ) -> Sequence[Unification]:
+        goal_text = render_tokens(goal.tokens)
+        candidate_texts = [render_tokens(candidate.tokens) for candidate in candidates]
+        results: list[Unification | None] = [None] * len(candidate_texts)
+        pending: list[tuple[int, str, str, tuple[Any, ...]]] = []
+        for index, candidate_text in enumerate(candidate_texts):
+            exact = match_wording(goal_text, candidate_text)
+            if exact is not None:
+                results[index] = Unification(True, bindings=exact, method="exact", confidence=1.0, note="Same wording.")
+                continue
+            canonical_goal, canonical_candidate, restore = canonicalize_pair(goal_text, candidate_text)
+            key = self._cache_key(canonical_goal, canonical_candidate)
+            task = self._cache.get(key)
+            if task is not None:
+                self._cache.move_to_end(key)
+                cached_result = await task
+                results[index] = self._restore_result(cached_result, restore, True)
+            else:
+                pending.append((index, canonical_goal, canonical_candidate, restore))
+        for start in range(0, len(pending), self.semantic_batch_size):
+            chunk = pending[start : start + self.semantic_batch_size]
+            semantic = await self._semantic_unify_many(
+                chunk[0][1],
+                [item[2] for item in chunk],
+            )
+            for item, result in zip(chunk, semantic, strict=True):
+                index, canonical_goal, canonical_candidate, restore = item
+                key = self._cache_key(canonical_goal, canonical_candidate)
+                task = asyncio.create_task(_resolved(result))
+                self._cache[key] = task
+                self._trim_cache()
+                results[index] = self._restore_result(result, restore, False)
+        return tuple(result for result in results if result is not None)
+
+    def _cache_key(self, goal: str, candidate: str) -> tuple[Any, ...]:
+        return ("pyjev-v2", self.model, self.align_threshold, self.match_threshold, goal, candidate)
+
+    def _trim_cache(self) -> None:
+        while len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+
+    @staticmethod
+    def _restore_result(result: Unification, restore: dict[str, str], cached: bool) -> Unification:
         restored_bindings = {
             restore_variables(variable, restore): restore_variables(value, restore)
             for variable, value in result.bindings.items()
         }
         restored_checks = tuple(
-            Check(
-                question=restore_variables(check.question, restore),
-                probability=check.probability,
-                passed=check.passed,
-            )
+            Check(restore_variables(check.question, restore), check.probability, check.passed)
             for check in result.checks
         )
-        note = restore_variables(result.note, restore) if result.note else None
+        usage = BackendUsage(
+            requests=result.usage.requests,
+            questions=result.usage.questions,
+            cached=cached,
+            request_ids=result.usage.request_ids,
+            model=result.usage.model,
+            usage=result.usage.usage,
+        )
         return Unification(
             unified=result.unified,
             bindings=restored_bindings,
             method=result.method,
             confidence=result.confidence,
-            note=note,
+            note=restore_variables(result.note, restore) if result.note else None,
             checks=restored_checks,
             calls=0 if cached else result.calls,
             cached=cached,
+            usage=usage,
         )
+
+    async def _semantic_unify_many(self, goal: str, candidates: Sequence[str]) -> tuple[Unification, ...]:
+        if not hasattr(self._jev, "run"):
+            return tuple(await asyncio.gather(*(self._semantic_unify(goal, candidate) for candidate in candidates)))
+        try:
+            from pyjev.compile import build_choice, build_noul
+        except ImportError:  # pragma: no cover - injected clients may not install pyjev
+            return tuple(await asyncio.gather(*(self._semantic_unify(goal, candidate) for candidate in candidates)))
+
+        variables = list(dict.fromkeys(variables_in(goal)))
+        for candidate in candidates:
+            variables.extend(variable for variable in variables_in(candidate) if variable not in variables)
+        state = {
+            "definition": self.SAME_FACT,
+            "variables": self.VARIABLES,
+            "goal": goal,
+            "candidates": {f"c{i}": c for i, c in enumerate(candidates)},
+        }
+        phase_a: dict[str, Any] = {}
+        binding_labels: dict[str, tuple[int, str]] = {}
+        for index, candidate in enumerate(candidates):
+            label = f"align:c{index}"
+            phase_a[label] = build_noul(f"Could candidate c{index} state the same fact as the goal? {self.SAME_FACT}")
+            for variable in variables_in(goal):
+                key = f"bind:c{index}:goal:{variable}"
+                phrases = candidate_phrases(candidate) + [self.NONE]
+                phase_a[key] = build_choice(
+                    f"Which phrase in candidate c{index} fills goal variable {variable}?",
+                    {str(i): value for i, value in enumerate(phrases)},
+                )
+                binding_labels[key] = (index, variable)
+            for variable in variables_in(candidate):
+                key = f"bind:c{index}:candidate:{variable}"
+                phrases = candidate_phrases(goal) + [self.NONE]
+                phase_a[key] = build_choice(
+                    f"Which phrase in the goal fills candidate variable {variable}?",
+                    {str(i): value for i, value in enumerate(phrases)},
+                )
+                binding_labels[key] = (index, variable)
+        response_a = await self._run_bundle(state, phase_a)
+        survivors: list[tuple[int, dict[str, str], str, str]] = []
+        for index, candidate in enumerate(candidates):
+            alignment = _result_value(response_a, f"align:c{index}", 0.0)
+            if float(alignment) < self.align_threshold:
+                continue
+            bindings: dict[str, str] = {}
+            for label, (candidate_index, variable) in binding_labels.items():
+                if candidate_index != index:
+                    continue
+                selected = _result_value(response_a, label, self.NONE)
+                if isinstance(selected, str) and selected != self.NONE:
+                    try:
+                        side = label.split(":")[2]
+                        source = candidate if side == "goal" else goal
+                        phrases = candidate_phrases(source)
+                        selected = phrases[int(selected)] if selected.isdigit() else selected
+                    except (IndexError, ValueError):
+                        selected = self.NONE
+                if selected != self.NONE and isinstance(selected, str):
+                    bindings[variable] = selected
+            filled_goal = substitute(
+                goal,
+                {name: value for name, value in bindings.items() if f"{{{name}}}" in goal},
+            )
+            filled_candidate = substitute(
+                candidate,
+                {name: value for name, value in bindings.items() if f"{{{name}}}" in candidate},
+            )
+            survivors.append((index, bindings, filled_goal, filled_candidate))
+        if not survivors:
+            usage = BackendUsage(
+                requests=1,
+                questions=len(phase_a),
+                model=self.model,
+            )
+            return tuple(Unification(False, method="jev", confidence=0.0, calls=1, usage=usage) for _ in candidates)
+        phase_b: dict[str, Any] = {}
+        for index, _bindings, _filled_goal, _filled_candidate in survivors:
+            phase_b[f"relation:c{index}"] = build_choice(
+                f"How does candidate c{index} relate to the goal?",
+                self.RELATIONS,
+            )
+            phase_b[f"participants:c{index}"] = build_noul(
+                "Do the two statements refer to exactly the same people and things?"
+            )
+        response_b = await self._run_bundle({"variables": self.VARIABLES}, phase_b)
+        output: list[Unification] = [Unification(False, method="jev", confidence=0.0) for _ in candidates]
+        for index, bindings, filled_goal, filled_candidate in survivors:
+            relation = _result_value(response_b, f"relation:c{index}", "different")
+            participants = float(_result_value(response_b, f"participants:c{index}", 0.0))
+            p_same = float(_result_probability(response_b, f"relation:c{index}", "same"))
+            checks = (
+                Check(
+                    f'Does "{filled_candidate}" state the same fact as "{filled_goal}"?',
+                    p_same,
+                    p_same >= self.match_threshold,
+                ),
+                Check(
+                    "Are the statements about the same people and things?",
+                    participants,
+                    participants >= self.match_threshold,
+                ),
+            )
+            unified = p_same >= self.match_threshold and participants >= self.match_threshold and relation == "same"
+            output[index] = Unification(
+                unified,
+                bindings=bindings if unified else {},
+                method="jev",
+                confidence=min(p_same, participants),
+                note=(
+                    "Verified as the same fact about the same participants."
+                    if unified
+                    else f"Verification classified the relation as {relation!r}."
+                ),
+                checks=checks,
+                calls=2,
+                usage=BackendUsage(
+                    requests=2,
+                    questions=len(phase_a) + len(phase_b),
+                    model=self.model,
+                ),
+            )
+        return tuple(output)
+
+    async def _run_bundle(self, state: Any, questions: dict[str, Any]) -> dict[str, Any]:
+        async with self._semaphore:
+            return await self._jev.run(state=state, questions=questions, model=self.model)
 
     async def _semantic_unify(self, goal: str, candidate: str) -> Unification:
         calls = 0
@@ -306,3 +514,23 @@ class PyJevUnifier:
             checks=tuple(checks),
             calls=calls,
         )
+
+
+async def _resolved(value: Unification) -> Unification:
+    return value
+
+
+def _result_value(results: Any, label: str, default: Any) -> Any:
+    value = results.get(label, default) if isinstance(results, dict) else default
+    if isinstance(value, dict):
+        return value.get("value", default)
+    return getattr(value, "value", value)
+
+
+def _result_probability(results: Any, label: str, choice: str) -> float:
+    value = results.get(label) if isinstance(results, dict) else None
+    probabilities = value.get("probabilities", {}) if isinstance(value, dict) else getattr(value, "probabilities", {})
+    if isinstance(probabilities, dict):
+        return float(probabilities.get(choice, 0.0))
+    selected = _result_value(results, label, 0.0)
+    return float(selected) if isinstance(selected, (int, float)) else 0.0

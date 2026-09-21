@@ -1,158 +1,122 @@
-# inferlingo
+# InferLingo
 
-A small, model-neutral Prolog-like logic interpreter whose facts and rules stay in readable English.
-Ordinary Python performs parsing, substitutions, backtracking, rule execution, negation-as-failure,
-and exact wording matches. Differently worded sentences can be delegated to a pluggable semantic
-unifier. The MVP ships with an optional `PyJevUnifier` adapter for pyjev/Jev.
+InferLingo is a small Python rule engine for facts and rules written as readable sentences.
+Use Python to compute exact facts, InferLingo to derive consequences, and an optional semantic
+unifier when two sentences express the same fact with different wording.
 
-This is an MVP inspired by `narphorium/nl-logic-interpreter`, rewritten as a Python-first library
-with the semantic-model boundary kept behind a small `Unifier` protocol.
-
-## What this MVP includes
-
-- root-level Python package (`inferlingo/`) — **no `src/` layer**;
-- **dynamic versions from Git tags** via `setuptools-scm`;
-- facts and rules written one sentence per line;
-- variables such as `X`, `Y`, `Z1`;
-- `if`, `then`, `when`, `and`, `or`, and leading `not`;
-- SLD-style depth-first proof search and rule-variable freshening;
-- exact unification in normal Python before any model call;
-- a model-neutral `Unifier` protocol plus an optional pyjev-backed semantic adapter;
-- canonicalized async semantic-unification cache and configurable backend concurrency;
-- an `--exact-only` mode that never contacts a semantic model;
-- structured proof steps for `--debug` output;
-- offline unit tests that do not require an API key.
-
-The deliberate MVP limitation is **no System Two question translator**. Write a goal directly, for
-example `X is a grandfather of Bart?`, rather than `Who is Bart's grandfather?`. This keeps every AI
-operation a structured semantic judgment when the optional Jev adapter is used.
-
-## Install
-
-From the extracted project:
-
-For deterministic logic only:
+## Quick start
 
 ```bash
 python -m pip install -e '.[dev]'
+inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
+inferlingo run examples/access_policy.nl "{person} may deploy?" --exact-only --explain
+inferlingo run examples/dependency_impact.nl "{service} is affected?" --exact-only --json
 ```
 
-For the included Jev semantic backend:
+The exact examples require no credentials and never contact a model. The expected bindings are
+`Tweety`, `Alice`, and `auth`, `api`, `web` respectively. More examples are in `examples/README.md`.
 
-```bash
-python -m pip install -e '.[dev,jev]'
+## Python API
+
+```python
+from inferlingo import ExactUnifier, KnowledgeBase, Provenance
+
+kb = KnowledgeBase.from_file("examples/python_lint_rules.nl", unifier=ExactUnifier())
+kb.add_fact(
+    "Function {fn} catches a broad exception",
+    fn="process_order",
+    provenance=Provenance(source="orders.py", line=81, kind="python-ast"),
+)
+kb.add_fact(
+    "Function {fn} has an exception path that does not re-raise",
+    fn="process_order",
+    provenance=Provenance(source="orders.py", line=84, kind="python-ast"),
+)
+
+result = await kb.ask("Function {fn} may swallow errors?")
+for solution in result.solutions:
+    print(solution.bindings)
+    print(solution.proof.render())
 ```
 
-Then configure pyjev in the normal way:
+`ask_sync()` provides the same API outside an event loop. Calling it from an active event loop
+raises a clear error, so asynchronous callers should use `await ask()`.
 
-```bash
-pyjev auth set
-pyjev auth test
+The lower-level API remains available:
+
+```python
+from inferlingo import ExactUnifier, NLEngine, parse_program, parse_query
+
+result = await NLEngine(parse_program("Alice is known."), ExactUnifier()).run(
+    parse_query("Alice is known?")
+)
 ```
 
-or use `TYPESAFE_API_KEY`.
+## Language
 
-## Try the deterministic example
-
-```bash
-inferlingo run programs/birds.nl "X can fly?" --exact-only --debug
-```
-
-Expected solution:
-
-```text
-X = Tweety
-```
-
-No model is used because every proof step uses the same wording.
-
-## Try semantic unification
-
-`programs/family.nl` deliberately contains this fact:
-
-```text
-Lisa's dad is Homer.
-```
-
-and this rule:
-
-```text
-If X is the father of Y then X is a parent of Y.
-```
-
-Ask:
-
-```bash
-inferlingo run programs/family.nl "Homer is a parent of Lisa?" --debug
-```
-
-The engine can match the query to the rule head deterministically. It then needs to prove:
-
-```text
-Homer is the father of Lisa
-```
-
-against:
-
-```text
-Lisa's dad is Homer
-```
-
-That differently worded pair is sent through the configured semantic unifier. The CLI currently uses the optional `PyJevUnifier` adapter.
-
-You can also ask for bindings:
-
-```bash
-inferlingo run programs/family.nl "X is a parent of Lisa?"
-```
-
-## Program syntax
-
-Facts are ordinary lines:
+Facts and rules can use uppercase compatibility variables or descriptive braced variables:
 
 ```text
 Tweety is a canary.
-Lisa's dad is Homer.
+{bird} is a bird if {bird} is a canary.
+{bird} can fly if {bird} is a bird.
+{person} is trusted if {person} is known and not {person} is blocked.
 ```
 
-Rules support these forms:
+Quoted atoms preserve opaque application values exactly:
 
 ```text
-If X is a canary then X is a bird.
-If X is a bird, X can fly.
-When X is a bird, X can fly.
-X is a canary then X is a bird.
-X can fly if X is a bird.
-X can fly when X is a bird.
+Artifact "https://example.com/a" is reachable.
+User "john@example.com" is active.
+Version "3.14.2" is deployed.
+Path "/srv/app/config.yaml" exists.
 ```
 
-Conditions can use `and`, `or`, commas, semicolons, and leading `not`:
+Quoted values may contain spaces, escaped quotes, and escaped backslashes. Keywords inside a
+quoted value are ordinary text. Comments use `#`, `%`, or `//` outside quoted values.
 
-```text
-X is trusted if X is known and not X is blocked.
-X may enter if X has a badge or X is escorted.
+Rules are validated in strict mode. Facts must be ground, rule-head variables must occur in a
+positive condition, and negative-condition variables must be range restricted by positive
+conditions. Negation means failure to prove the positive fact. Unground negation is rejected.
+
+## Deterministic and semantic boundaries
+
+Exact unification is deterministic and offline. It handles wording, variable bindings, and
+multi-token phrases. It does not contact a model.
+
+`PyJevUnifier` is optional:
+
+```bash
+python -m pip install -e '.[dev,jev]'
+pyjev auth set
+pyjev auth test
+inferlingo run examples/family.nl "Homer is a parent of Lisa?" --explain
 ```
 
-`not` is **negation as failure**. Negative wording inside a normal sentence is just wording.
+Semantic unification recognizes equivalent statements. It does not turn implication into
+synonymy. The explicit rule in `family.nl` expresses `father -> parent`; the semantic backend
+may only recognize `Lisa's dad is Homer` and `Homer is the father of Lisa` as the same fact.
+Semantic judgments retain their checks and confidence signals. They are not theorem
+probabilities. Batched semantic candidates use bounded two-phase requests and a bounded,
+configuration-aware in-memory cache.
 
-## Why the semantic unifier has two phases
+## CLI output and exit codes
 
-For differently worded goal/candidate pairs, the MVP follows the same basic safety idea as the source
-project:
+`inferlingo validate FILE` parses a program without a backend. `inferlingo run FILE QUERY` supports:
 
-1. **Align** — ask whether the sentences could state the same fact and, for each variable, which phrase
-   in the other sentence it denotes. Candidates below the alignment threshold are rejected early.
-2. **Verify** — fill the bindings, then ask both how statement B relates to statement A and whether
-   they concern the same participants. Only `same` with sufficient probability and sufficient
-   participant probability counts as unification.
+- `--exact-only` for offline deterministic execution
+- `--json` for stable machine-readable solutions, proofs, trace, and stats
+- `--explain` for the proof attached to each solution
+- `--trace` for all search attempts, including failures and cutoffs
+- `--stats` for aggregate backend, indexing, and proof counters
+- `--debug` as a compatibility alias for `--trace`
 
-This prevents an implication such as `father -> parent` from being silently treated as a paraphrase.
-That implication should be an explicit rule.
+Exit codes are:
 
-The included Jev adapter uses pyjev's typed `noul()` and `choice()` primitives. This means one semantic unification can
-use more API calls than the TypeScript reference, which bundles dynamic questions. A natural pyjev
-follow-up is a first-class typed **dynamic bundle** API; the rest of this interpreter would not need to
-change.
+- `0`: command completed, including a query with no solutions
+- `1`: backend or runtime failure
+- `2`: invalid file, syntax, or rule-safety error
+- `130`: interrupted by the user
 
 ## Architecture
 
@@ -160,82 +124,33 @@ change.
 .nl program
     |
     v
-parser.py  ------------------------------- deterministic
+quote-aware parser and safety validation
     |
     v
-engine.py (SLD/backtracking/negation)
+indexed deterministic resolver and proof paths
     |
-    +--> exact wording match -------------- deterministic
+    +--> exact wording and bindings
     |
-    +--> PyJevUnifier --------------------- judgment boundary
-             |
-             +--> align: Noul + Choice(s)
-             |
-             +--> verify: Choice + Noul
-             |
-             v
-           pyjev -> typesafe-sdk -> Jev
+    +--> optional batched semantic unifier
+              |
+              v
+             pyjev
 ```
 
-The logic engine depends only on the small `Unifier` protocol. Tests can inject a fake unifier,
-`--exact-only` swaps in `ExactUnifier`, and future adapters can target other semantic classifiers or
-judgment models without changing the parser or inference engine.
-
-## Dynamic versioning
-
-There is no version string to edit in source code.
-
-`pyproject.toml` declares:
-
-```toml
-[project]
-dynamic = ["version"]
-
-[tool.setuptools_scm]
-version_file = "inferlingo/_version.py"
-fallback_version = "0.0.0"
-parentdir_prefix_version = "inferlingo-"
-local_scheme = "no-local-version"
-```
-
-Normal release flow:
-
-```bash
-git init
-git add .
-git commit -m "Initial inferlingo MVP"
-git tag v0.1.0
-python -m build
-```
-
-`setuptools-scm` derives the package version from Git and writes the generated
-`inferlingo/_version.py` into build contexts.
+Deterministic code computes facts. InferLingo derives logical consequences. Semantic models are
+used only at an explicit equivalence judgment boundary. InferLingo does not translate free-form
+questions, perform arithmetic, inspect source code, execute actions, or invent missing facts.
 
 ## Development
 
 ```bash
-pytest
+pytest -q
 ruff check .
 python -m build
-python -m twine check dist/*
 ```
 
-The test suite is intentionally offline; it exercises parsing, exact unification, SLD resolution,
-negation, semantic-unifier integration through a fake, and package version fallback behavior without
-contacting Jev.
-
-## Not in the MVP
-
-- free-form question -> logical-goal translation;
-- web UI / step-through visualizer;
-- persistence;
-- cut/operator syntax;
-- full Prolog term grammar;
-- occurs-check / arbitrary nested terms;
-- typed dynamic pyjev bundles in one API request.
-
-Those can be added without changing the main boundary: deterministic logic in Python, ambiguous
-semantic equivalence behind a pluggable backend.
+The test suite is offline. It uses fake semantic clients for batching and does not require an API
+key.
 
 ## License
 

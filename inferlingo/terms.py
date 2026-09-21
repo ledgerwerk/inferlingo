@@ -117,6 +117,11 @@ def _quote_atom(value: str) -> str:
     return f'"{escaped}"'
 
 
+def quote_atom(value: object) -> str:
+    """Render an application value as one safely escaped quoted atom."""
+    return _quote_atom(str(value))
+
+
 def render_tokens(tokens: Iterable[Token], *, preserve_quotes: bool = True) -> str:
     rendered: list[str] = []
     for token in tokens:

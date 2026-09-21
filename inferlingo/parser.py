@@ -195,12 +195,43 @@ def _validate_program(clauses: list[Clause], *, source: str | None) -> None:
             )
 
 
+def _ends_statement(text: str) -> bool:
+    in_quote = False
+    escaped = False
+    for char in text:
+        if in_quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_quote = False
+        elif char == '"':
+            in_quote = True
+        elif char == ".":
+            return True
+    return False
+
+
 def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = True) -> Program:
     clauses: list[Clause] = []
+    statements: list[tuple[int, str]] = []
+    pending: list[str] = []
+    pending_line = 1
     for line_number, raw in enumerate(text.splitlines(), start=1):
         line = _strip_comment(raw).strip()
         if not line:
             continue
+        if not pending:
+            pending_line = line_number
+        pending.append(line)
+        if _ends_statement(line):
+            statements.append((pending_line, " ".join(pending)))
+            pending = []
+    if pending:
+        statements.append((pending_line, " ".join(pending)))
+
+    for line_number, line in statements:
         try:
             parts = _rule_parts(line)
             if parts is None:
@@ -208,7 +239,7 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
                 if not head:
                     continue
                 sentence_tokens(head)
-                clauses.append(Clause(head=head, source=source or raw, line=line_number))
+                clauses.append(Clause(head=head, source=source or line, line=line_number))
                 continue
 
             head, body = parts
@@ -223,7 +254,7 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
                     Clause(
                         head=strip_sentence(head),
                         body=literals,
-                        source=source or raw,
+                        source=source or line,
                         line=line_number,
                     )
                 )
