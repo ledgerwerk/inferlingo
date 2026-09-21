@@ -1,3 +1,5 @@
+import asyncio
+
 from inferlingo import ExactUnifier, KnowledgeBase, Provenance
 
 
@@ -16,3 +18,7 @@ async def main() -> None:
     result = await kb.ask("Function {fn} may swallow errors?")
     for solution in result.solutions:
         print(solution.bindings, solution.proof.render())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
