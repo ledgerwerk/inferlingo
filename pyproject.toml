@@ -14,7 +14,6 @@ keywords = ["logic", "prolog", "natural-language", "reasoning", "semantic-unific
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
-  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
