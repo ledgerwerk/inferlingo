@@ -7,18 +7,19 @@ versioning:
 entry_id: entry-0004
 release_version: 0.1.0
 kind: added
-summary: Added bounded resolution with branch-local proofs, global traces, aggregate
+summary:
+  Added bounded resolution with branch-local proofs, global traces, aggregate
   statistics, and truncation reporting
 status: accepted
 audience: null
 scopes: []
 source_refs: []
 paths:
-- inferlingo/engine.py
+  - inferlingo/engine.py
 issues: []
 prs: []
 sources:
-- tl:task-0004
+  - tl:task-0004
 contributors: []
 breaking: false
 internal: false

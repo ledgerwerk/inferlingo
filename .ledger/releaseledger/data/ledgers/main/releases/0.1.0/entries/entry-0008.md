@@ -13,11 +13,11 @@ audience: null
 scopes: []
 source_refs: []
 paths:
-- examples
+  - examples
 issues: []
 prs: []
 sources:
-- tl:task-0004
+  - tl:task-0004
 contributors: []
 breaking: false
 internal: false

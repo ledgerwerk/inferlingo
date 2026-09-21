@@ -7,18 +7,19 @@ versioning:
 entry_id: entry-0002
 release_version: 0.1.0
 kind: added
-summary: Added deterministic exact unification with named variables and multi-word
+summary:
+  Added deterministic exact unification with named variables and multi-word
   phrase binding
 status: accepted
 audience: null
 scopes: []
 source_refs: []
 paths:
-- inferlingo/unifier.py
+  - inferlingo/unifier.py
 issues: []
 prs: []
 sources:
-- tl:task-0004
+  - tl:task-0004
 contributors: []
 breaking: false
 internal: false

@@ -20,6 +20,7 @@ class Provenance:
 @dataclass(frozen=True, slots=True)
 class Literal:
     """A sentence condition, optionally evaluated as negation-as-failure."""
+
     sentence: str
     negated: bool = False
 
@@ -27,6 +28,7 @@ class Literal:
 @dataclass(frozen=True, slots=True)
 class Clause:
     """A rule head with body conditions and optional source provenance."""
+
     head: str
     body: tuple[Literal, ...] = ()
     source: str = ""
@@ -41,12 +43,14 @@ class Clause:
 @dataclass(frozen=True, slots=True)
 class Program:
     """An immutable collection of parsed clauses."""
+
     clauses: tuple[Clause, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class Query:
     """A parsed query containing alternative literal branches."""
+
     alternatives: tuple[tuple[Literal, ...], ...]
     text: str
 
@@ -54,6 +58,7 @@ class Query:
 @dataclass(frozen=True, slots=True)
 class Check:
     """One semantic-backend check with its confidence and pass result."""
+
     question: str
     probability: float
     passed: bool
@@ -62,6 +67,7 @@ class Check:
 @dataclass(frozen=True, slots=True)
 class BackendUsage:
     """Counters and identifiers describing backend work for a unification."""
+
     requests: int = 0
     questions: int = 0
     cached: bool = False
@@ -73,6 +79,7 @@ class BackendUsage:
 @dataclass(frozen=True, slots=True)
 class Unification:
     """The result of exact or semantic unification, including diagnostics."""
+
     unified: bool
     bindings: dict[str, str] = field(default_factory=dict)
     method: str = "exact"
@@ -87,6 +94,7 @@ class Unification:
 @dataclass(frozen=True, slots=True)
 class ProofStep:
     """One resolver attempt or result in a proof or global trace."""
+
     kind: str
     depth: int
     goal: str
@@ -106,6 +114,7 @@ class ProofStep:
 @dataclass(frozen=True, slots=True)
 class Proof:
     """A branch-local sequence of proof steps for one solution."""
+
     steps: tuple[ProofStep, ...] = ()
 
     def render(self) -> str:
@@ -130,6 +139,7 @@ class Proof:
 @dataclass(frozen=True, slots=True)
 class RunStats:
     """Aggregate resolver and backend counters for one run."""
+
     backend_requests: int = 0
     semantic_questions: int = 0
     cache_hits: int = 0
@@ -142,6 +152,7 @@ class RunStats:
 @dataclass(frozen=True, slots=True)
 class Solution:
     """One query answer with bindings, rendered text, and its proof."""
+
     bindings: dict[str, str]
     answer: str
     proof: Proof = field(default_factory=Proof)
@@ -163,6 +174,7 @@ class Solution:
 @dataclass(frozen=True, slots=True)
 class RunResult:
     """The complete bounded result of resolving a query."""
+
     solutions: tuple[Solution, ...]
     steps: tuple[ProofStep, ...]
     truncated: bool

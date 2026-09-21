@@ -43,8 +43,7 @@ application values such as service names.
 
 ## Semantic equivalence: `family.nl`
 
-This example separates semantic wording equivalence from explicit logic. The fact `Lisa's dad is
-Homer` may need semantic unification to match `Homer is the father of Lisa`. The rule from father
+This example separates semantic wording equivalence from explicit logic. The fact `Lisa's dad is Homer` may need semantic unification to match `Homer is the father of Lisa`. The rule from father
 to parent remains explicit.
 
 For end users, install the optional extra:

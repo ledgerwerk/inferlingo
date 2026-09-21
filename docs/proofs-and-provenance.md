@@ -39,7 +39,7 @@ kb.add_fact(
 
 When the fact participates in a solution, its provenance is retained on the corresponding proof
 step. Provenance is application-owned evidence. InferLingo carries the metadata through a
- derivation but does not verify the external source.
+derivation but does not verify the external source.
 
 `Provenance` contains:
 

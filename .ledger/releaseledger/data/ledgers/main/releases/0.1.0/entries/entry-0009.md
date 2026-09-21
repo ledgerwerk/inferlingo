@@ -7,18 +7,19 @@ versioning:
 entry_id: entry-0009
 release_version: 0.1.0
 kind: docs
-summary: Documented the v0.1.0 user guide, language, CLI, Python, semantic, proof,
+summary:
+  Documented the v0.1.0 user guide, language, CLI, Python, semantic, proof,
   debugging, examples, and API reference
 status: accepted
 audience: null
 scopes: []
 source_refs: []
 paths:
-- docs
+  - docs
 issues: []
 prs: []
 sources:
-- tl:task-0004
+  - tl:task-0004
 contributors: []
 breaking: false
 internal: false

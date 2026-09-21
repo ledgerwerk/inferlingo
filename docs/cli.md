@@ -70,9 +70,9 @@ A warning is printed when search is truncated. No proof found is not itself a CL
 
 ## Exit codes
 
-| Exit | Meaning |
-| ---: | --- |
-| 0 | The command completed, including a valid query with no solutions |
-| 1 | Semantic backend or execution/runtime failure |
-| 2 | Invalid file, parse error, or rule-safety error |
-| 130 | Interrupted by the user |
+| Exit | Meaning                                                          |
+| ---: | ---------------------------------------------------------------- |
+|    0 | The command completed, including a valid query with no solutions |
+|    1 | Semantic backend or execution/runtime failure                    |
+|    2 | Invalid file, parse error, or rule-safety error                  |
+|  130 | Interrupted by the user                                          |

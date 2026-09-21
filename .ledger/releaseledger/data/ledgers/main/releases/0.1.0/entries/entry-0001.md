@@ -7,15 +7,16 @@ versioning:
 entry_id: entry-0001
 release_version: 0.1.0
 kind: added
-summary: Added the readable sentence-shaped rule engine for explicit facts, rules,
+summary:
+  Added the readable sentence-shaped rule engine for explicit facts, rules,
   and queries
 status: accepted
 audience: null
 scopes: []
 source_refs:
-- tl:task-0004
+  - tl:task-0004
 paths:
-- inferlingo
+  - inferlingo
 issues: []
 prs: []
 sources: []

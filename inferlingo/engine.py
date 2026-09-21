@@ -63,6 +63,7 @@ class _RunState:
 
 class NLEngine:
     """Resolve parsed queries against indexed clauses with a pluggable unifier."""
+
     def __init__(self, program, unifier: Unifier) -> None:
         """Create an engine for a parsed program and unifier."""
         self.program = program
