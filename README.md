@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/inferlingo)](https://pypi.org/project/inferlingo/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/inferlingo)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/inferlingo)
+[![codecov](https://codecov.io/gh/ledgerwerk/inferlingo/graph/badge.svg?token=WzRI7jIoDg)](https://codecov.io/gh/ledgerwerk/inferlingo)
+
 # InferLingo
 
 InferLingo is a small Python rule engine for facts and rules written as readable sentences.
