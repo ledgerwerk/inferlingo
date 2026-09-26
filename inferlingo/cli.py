@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -11,6 +17,7 @@ import typer
 
 from . import __version__
 from .engine import NLEngine
+from .models import Clause, Program
 from .parser import ParseError, parse_program, parse_query
 from .terms import variables_in
 from .unifier import ExactUnifier, PyJevUnifier
@@ -22,6 +29,98 @@ app = typer.Typer(
 )
 PROGRAM_ARGUMENT = typer.Argument(..., exists=True, dir_okay=False, readable=True)
 QUERY_ARGUMENT = typer.Argument(..., help='Goal syntax, e.g. "X is a grandfather of Bart?"')
+CASES_ARGUMENT = typer.Argument(..., exists=True, dir_okay=False, readable=True)
+
+
+def _load_input_program(rule_paths: Iterable[Path], fact_paths: Iterable[Path]) -> Program:
+    clauses: list[Clause] = []
+    rule_files = tuple(rule_paths)
+    if not rule_files:
+        raise ValueError("at least one rule file is required")
+    for path in rule_files:
+        clauses.extend(parse_program(path.read_text(encoding="utf-8"), source=str(path)).clauses)
+    for path in fact_paths:
+        parsed = parse_program(path.read_text(encoding="utf-8"), source=str(path))
+        if any(not clause.is_fact for clause in parsed.clauses):
+            raise ValueError(f"fact file {path} may contain facts only")
+        clauses.extend(parsed.clauses)
+    return Program(tuple(clauses))
+
+
+def _scenario_facts(raw_facts: object, *, source: str) -> tuple[Clause, ...]:
+    if not isinstance(raw_facts, list) or any(not isinstance(fact, str) for fact in raw_facts):
+        raise ValueError(f"{source}: facts must be an array of sentence strings")
+    clauses: list[Clause] = []
+    for fact in raw_facts:
+        parsed = parse_program(fact, source=source)
+        if len(parsed.clauses) != 1 or not parsed.clauses[0].is_fact:
+            raise ValueError(f"{source}: each scenario fact must be one ground fact")
+        clauses.extend(parsed.clauses)
+    return tuple(clauses)
+
+
+def _load_scenarios(path: Path) -> list[dict[str, object]]:
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema") != 1:
+        raise ValueError(f"{path}: expected schema = 1")
+    raw_cases = payload.get("case")
+    if not isinstance(raw_cases, list) or not raw_cases:
+        raise ValueError(f"{path}: expected at least one [[case]]")
+    cases: list[dict[str, object]] = []
+    for index, raw_case in enumerate(raw_cases, start=1):
+        if not isinstance(raw_case, dict):
+            raise ValueError(f"{path}: case {index} must be a table")
+        name = raw_case.get("name")
+        query = raw_case.get("query")
+        facts = raw_case.get("facts", [])
+        has_truth = "expect" in raw_case
+        has_bindings = "expect_bindings" in raw_case
+        if not isinstance(name, str) or not name.strip() or not isinstance(query, str) or not query.strip():
+            raise ValueError(f"{path}: case {index} requires non-empty name and query strings")
+        if not isinstance(facts, list) or any(not isinstance(fact, str) for fact in facts):
+            raise ValueError(f"{path}: case {name!r} facts must be an array of sentence strings")
+        if has_truth == has_bindings:
+            raise ValueError(f"{path}: case {name!r} must set exactly one of expect or expect_bindings")
+        if has_truth and not isinstance(raw_case["expect"], bool):
+            raise ValueError(f"{path}: case {name!r} expect must be true or false")
+        if has_bindings:
+            expected_bindings = raw_case["expect_bindings"]
+            if not isinstance(expected_bindings, list) or any(
+                not isinstance(binding, dict)
+                or any(not isinstance(key, str) or not isinstance(value, str) for key, value in binding.items())
+                for binding in expected_bindings
+            ):
+                raise ValueError(f"{path}: case {name!r} expect_bindings must be an array of string maps")
+        cases.append(dict(raw_case))
+    return cases
+
+
+async def _run_scenarios(program: Program, cases: list[dict[str, object]], *, source: str) -> tuple[int, int]:
+    passed = 0
+    failed = 0
+    for case in cases:
+        name = str(case["name"])
+        query = str(case["query"])
+        facts = _scenario_facts(case.get("facts", []), source=f"{source} [{name}]")
+        case_program = Program((*program.clauses, *facts))
+        result = await NLEngine(case_program, ExactUnifier()).run(parse_query(query))
+        if "expect" in case:
+            expected = case["expect"]
+            succeeded = result.matched is expected
+            detail = f"expected {expected}, got {result.matched}"
+        else:
+            expected_bindings = case["expect_bindings"]
+            expected = tuple(sorted(tuple(sorted(binding.items())) for binding in expected_bindings))
+            actual = tuple(sorted(tuple(sorted(solution.bindings.items())) for solution in result.solutions))
+            succeeded = actual == expected
+            detail = f"expected bindings {expected}, got {actual}"
+        if succeeded:
+            passed += 1
+            typer.echo(f"PASS {name}")
+        else:
+            failed += 1
+            typer.echo(f"FAIL {name}: {detail}")
+    return passed, failed
 
 
 def _version(value: bool) -> None:
@@ -50,10 +149,52 @@ def validate(program: Path = PROGRAM_ARGUMENT) -> None:
     typer.echo(f"ok: {facts} facts, {rules} rule clauses")
 
 
+@app.command("test")
+def test_scenarios(
+    program: Path = PROGRAM_ARGUMENT,
+    cases: Path = CASES_ARGUMENT,
+    additional_rules: list[Path] | None = typer.Option(  # noqa: B008
+        None,
+        "--rules",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Additional rule file; repeat to compose a rule pack.",
+    ),
+) -> None:
+    """Run an exact/offline TOML scenario suite against one or more rule files."""
+    try:
+        parsed_program = _load_input_program([program, *(additional_rules or [])], [])
+        scenarios = _load_scenarios(cases)
+        passed, failed = asyncio.run(_run_scenarios(parsed_program, scenarios, source=str(cases)))
+    except (OSError, ParseError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"{passed} passed, {failed} failed")
+    if failed:
+        raise typer.Exit(1)
+
+
 @app.command("run")
 def run_program(
     program: Path = PROGRAM_ARGUMENT,
     query: str = QUERY_ARGUMENT,
+    additional_rules: list[Path] | None = typer.Option(  # noqa: B008
+        None,
+        "--rules",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Additional rule file; repeat to compose a rule pack.",
+    ),
+    fact_files: list[Path] | None = typer.Option(  # noqa: B008
+        None,
+        "--facts",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Runtime fact file; repeat to combine evidence sources.",
+    ),
     exact_only: bool = typer.Option(
         False,
         "--exact-only",
@@ -76,9 +217,9 @@ def run_program(
 
     async def execute() -> int:
         try:
-            parsed_program = parse_program(program.read_text(encoding="utf-8"), source=str(program))
+            parsed_program = _load_input_program([program, *(additional_rules or [])], fact_files or [])
             parsed_query = parse_query(query, source="<query>")
-        except (OSError, ParseError) as exc:
+        except (OSError, ValueError) as exc:
             typer.echo(f"error: {exc}", err=True)
             return 2
 
@@ -170,9 +311,11 @@ def _print_explanations(result) -> None:
     typer.echo("EXPLANATIONS")
     for number, solution in enumerate(result.solutions, start=1):
         typer.echo(f"{number}. {solution.answer}")
-        rendered = solution.proof.render()
-        if rendered:
-            typer.echo(rendered)
+        proof_lines = solution.explain().splitlines()
+        if proof_lines and proof_lines[0] == solution.answer:
+            proof_lines = proof_lines[1:]
+        if proof_lines:
+            typer.echo("\n".join(proof_lines))
 
 
 def _stats_line(result) -> str:

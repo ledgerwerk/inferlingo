@@ -107,6 +107,20 @@ Outside quoted values, comments begin with any of:
 // comment
 ```
 
+## Rule metadata
+
+Comment directives can give the next rule a stable name and description for proof explanations:
+
+```text
+# @rule release-ready
+# @description Require CI, approval, and security evidence before release.
+{service} is release-ready if {service} has passing tests and {service} has an approved change.
+```
+
+A rule name must begin with a letter and contain only letters, digits, `.`, `_`, or `-`. Directives are
+optional; ordinary comments remain comments. Duplicate directives of the same kind before a rule and
+directives not followed by a rule are parse errors.
+
 ## Strict safety rules
 
 Strict mode is the default for `parse_program()` and `KnowledgeBase`:

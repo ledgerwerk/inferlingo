@@ -15,6 +15,7 @@ def test_documentation_tree_is_present() -> None:
         "index.md",
         "getting-started.md",
         "concepts.md",
+        "patterns.md",
         "language.md",
         "python-api.md",
         "cli.md",
@@ -35,7 +36,7 @@ def test_docs_root_has_navigation() -> None:
     index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
     assert "```{toctree}" in index
     assert ":hidden:" in index
-    for page in ("getting-started", "language", "python-api", "api/index"):
+    for page in ("getting-started", "concepts", "patterns", "language", "python-api", "api/index"):
         assert page in index
 
 

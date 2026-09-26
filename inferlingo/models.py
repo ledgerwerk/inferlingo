@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
+
+from .terms import Atom, Variable, render_tokens, sentence_tokens, strip_sentence, substitute
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +21,34 @@ class Provenance:
 
 
 @dataclass(frozen=True, slots=True)
+class Fact:
+    """A structured ground fact supplied by the application."""
+
+    template: str
+    values: Mapping[str, object] = field(default_factory=dict)
+    provenance: Provenance | None = None
+    source: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", MappingProxyType(dict(self.values)))
+
+    def render(self) -> str:
+        """Render the fact template with values safely quoted as opaque atoms."""
+        tokens = sentence_tokens(self.template)
+        substitutions: dict[Variable, tuple[Atom, ...]] = {}
+        for token in tokens:
+            if isinstance(token, Variable):
+                if token.name not in self.values:
+                    raise ValueError(f"Missing value for fact variable {token.name!r}")
+                substitutions[token] = (Atom(str(self.values[token.name]), quoted=True),)
+        rendered = render_tokens(
+            (replacement for token in tokens for replacement in substitutions.get(token, (token,))),
+            preserve_quotes=True,
+        )
+        return strip_sentence(rendered)
+
+
+@dataclass(frozen=True, slots=True)
 class Literal:
     """A sentence condition, optionally evaluated as negation-as-failure."""
 
@@ -27,13 +58,18 @@ class Literal:
 
 @dataclass(frozen=True, slots=True)
 class Clause:
-    """A rule head with body conditions and optional source provenance."""
+    """A rule head with body conditions, source provenance, and optional identity."""
 
     head: str
     body: tuple[Literal, ...] = ()
     source: str = ""
     line: int = 0
     provenance: Provenance | None = None
+    name: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     @property
     def is_fact(self) -> bool:
@@ -109,6 +145,9 @@ class ProofStep:
     checks: tuple[Check, ...] = ()
     request_ids: tuple[str, ...] = ()
     usage: BackendUsage | None = None
+    rule_name: str | None = None
+    rule_description: str | None = None
+    is_fact: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,21 +157,52 @@ class Proof:
     steps: tuple[ProofStep, ...] = ()
 
     def render(self) -> str:
-        """Render proof goals, clauses, and available provenance as readable lines."""
+        """Render this proof as an explainable tree (compatibility entry point)."""
+        return self.explain()
+
+    def explain(self, bindings: Mapping[str, str] | None = None) -> str:
+        """Render rule applications, evidence provenance, and negation-as-failure details."""
+        variable_bindings = bindings or {}
         lines: list[str] = []
         for step in self.steps:
             indent = "  " * step.depth
-            line = f"{indent}{step.goal}"
-            if step.kind == "success" and step.clause:
-                line += f" because {step.clause}"
-            elif step.kind == "negation":
-                line += " (negation holds)"
-            lines.append(line)
-            if step.provenance and (step.provenance.source or step.provenance.line):
-                location = step.provenance.source or "<memory>"
-                if step.provenance.line is not None:
-                    location += f":{step.provenance.line}"
-                lines.append(f"{indent}  source: {location}")
+            goal = substitute(step.goal, variable_bindings) if variable_bindings else step.goal
+            if step.is_fact and step.provenance is not None:
+                location_source = step.provenance.source or step.source
+                location_line = step.provenance.line if step.provenance.line is not None else step.line
+            else:
+                location_source = step.source or (step.provenance.source if step.provenance else None)
+                location_line = step.line or (step.provenance.line if step.provenance else None)
+            location = location_source or ""
+            if location_line is not None:
+                location += f":{location_line}"
+            if step.kind == "negation":
+                lines.append(f"{indent}{goal}")
+                if step.note and "Positive goal was proved" in step.note:
+                    lines.append(f"{indent}  negation failed: the positive goal was proved")
+                else:
+                    lines.append(f"{indent}  no matching positive fact (negation as failure)")
+            elif step.kind == "success" and step.is_fact:
+                lines.append(f"{indent}evidence: {goal}")
+                if location:
+                    lines.append(f"{indent}  source: {location}")
+            elif step.kind == "success":
+                lines.append(f"{indent}{goal}")
+                rule = step.rule_name or step.clause or "unnamed rule"
+                suffix = f" ({location})" if location else ""
+                lines.append(f"{indent}  via rule: {rule}{suffix}")
+                if step.rule_description:
+                    lines.append(f"{indent}    {step.rule_description}")
+            elif step.kind == "failure":
+                lines.append(f"{indent}not proved: {goal}")
+                if step.note:
+                    lines.append(f"{indent}  {step.note}")
+            elif step.kind == "cutoff":
+                lines.append(f"{indent}search stopped: {goal}")
+                if step.note:
+                    lines.append(f"{indent}  {step.note}")
+            else:
+                lines.append(f"{indent}{goal}")
         return "\n".join(lines)
 
 
@@ -170,6 +240,10 @@ class Solution:
         values = self.semantic_confidences
         return min(values) if values else None
 
+    def explain(self) -> str:
+        """Render this solution's proof with its final query bindings applied."""
+        return self.proof.explain(self.bindings)
+
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
@@ -187,3 +261,16 @@ class RunResult:
     @property
     def cached_unifications(self) -> int:
         return self.stats.cache_hits
+
+    @property
+    def matched(self) -> bool:
+        """Whether the query produced at least one solution."""
+        return bool(self.solutions)
+
+    def first(self) -> Solution | None:
+        """Return the first solution, if any."""
+        return self.solutions[0] if self.solutions else None
+
+    def values(self, variable: str) -> tuple[str, ...]:
+        """Return values bound to one query variable in solution order."""
+        return tuple(solution.bindings[variable] for solution in self.solutions if variable in solution.bindings)

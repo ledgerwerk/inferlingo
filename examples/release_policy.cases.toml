@@ -1,0 +1,28 @@
+schema = 1
+
+[[case]]
+name = "healthy checkout service is release ready"
+query = "checkout is release-ready?"
+expect = true
+facts = [
+  "checkout has passing tests.",
+  "checkout has an approved change.",
+  "checkout has acceptable vulnerability status.",
+]
+
+[[case]]
+name = "release freeze blocks readiness"
+query = "checkout is release-ready?"
+expect = false
+facts = [
+  "checkout has passing tests.",
+  "checkout has an approved change.",
+  "checkout has acceptable vulnerability status.",
+  "checkout is frozen.",
+]
+
+[[case]]
+name = "critical vulnerability becomes a blocker"
+query = "billing has blocker {reason}?"
+expect_bindings = [{ reason = "critical vulnerabilities" }]
+facts = ["billing has critical vulnerabilities."]

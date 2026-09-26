@@ -1,93 +1,140 @@
 # Python API
 
-Use `KnowledgeBase` for normal application embedding. It owns a parsed collection of clauses and
-uses exact unification by default.
+For application policy, use immutable `RuleSet` objects with structured `Fact` inputs and isolated
+`Session` evaluations. `KnowledgeBase` remains public for mutable workflows and v0.1 compatibility.
+Python APIs use `ExactUnifier` by default, so these examples are deterministic and offline.
 
-## `KnowledgeBase`
+## `Fact`: structured application evidence
+
+A `Fact` contains a sentence template, a mapping of variable values, optional application-owned
+provenance, and an optional source label:
 
 ```python
-from inferlingo import KnowledgeBase
+from inferlingo import Fact, Provenance
 
-kb = KnowledgeBase.from_file("rules.nl")
-result = await kb.ask("{person} may deploy?")
+fact = Fact(
+    "URL {url} is reachable",
+    {"url": "https://example.com/a?x=1&y=2"},
+    provenance=Provenance(source="scanner.json", line=41, kind="http-check"),
+    source="runtime-scan",
+)
+print(fact.render())
 ```
 
-`KnowledgeBase.from_text()` and `from_file()` create a knowledge base, parse input in strict mode
-by default, and accept an optional custom unifier. The default is `ExactUnifier`, so no network or
-semantic backend is used unless one is supplied explicitly.
+Values are quoted as opaque atoms; URL punctuation, spaces, quotes, and NL comment characters cannot
+become rule syntax. The fact's mapping is copied and read-only. Missing values or a template that
+parses as a rule are rejected when the fact is added to an evaluation.
 
-Use `add_text()` to parse and append more facts or rules. The read-only `program` property returns
-the current `Program` view.
+## Reusable rules with `RuleSet`
 
-## Safe fact injection
+```python
+from inferlingo import ExactUnifier, Fact, Provenance, RuleSet
 
-Use `add_fact()` when an application has a value to inject into a sentence template:
+rules = RuleSet.from_file("release_policy.nl", unifier=ExactUnifier())
+facts = [
+    Fact(
+        "{service} has passing tests",
+        {"service": "checkout"},
+        provenance=Provenance(source="ci/test-results.json", line=1, kind="ci"),
+    ),
+    Fact("{service} has an approved change", {"service": "checkout"}),
+    Fact("{service} has acceptable vulnerability status", {"service": "checkout"}),
+]
+result = rules.ask_sync("{service} is release-ready?", facts=facts)
+
+if result.matched:
+    print(result.values("service"))
+    print(result.first().explain())
+```
+
+`RuleSet` is immutable. `from_text()` and `from_file()` parse one rules source; `from_files()` composes
+multiple rule files while preserving each source path on its clauses. `RuleSet.ask()` and
+`RuleSet.ask_sync()` accept runtime `facts` and create a fresh evaluation for every call. Facts from
+one call are not retained by the rule set or visible to later calls.
+
+```python
+rules = RuleSet.from_files("base.nl", "security.nl", "release.nl")
+```
+
+Use `await rules.ask(query, facts=facts)` from async code. `ask_sync()` is for synchronous code outside
+a running event loop; inside an event loop, await the async method.
+
+## Multiple queries with `Session`
+
+A `Session` holds runtime facts for one evaluation context and supports multiple queries over the same
+facts:
+
+```python
+session = rules.session()
+session.add_facts(facts)
+ready = session.ask_sync("checkout is release-ready?")
+blockers = session.ask_sync("checkout has blocker {reason}?")
+```
+
+Sessions are isolated from one another. `add_fact()` accepts one `Fact`; `add_facts()` accepts an
+iterable. A session can be discarded when its request/build evaluation is complete. Its
+`program` property shows the combined immutable view of static rules and runtime facts.
+
+## `KnowledgeBase` compatibility API
+
+`KnowledgeBase` is a mutable collection of rules and facts and remains supported:
 
 ```python
 from inferlingo import KnowledgeBase, Provenance
 
-kb = KnowledgeBase.from_text("URL {url} is approved if URL {url} is reachable.")
+kb = KnowledgeBase.from_text(
+    """
+    Alice is an employee.
+    {person} may deploy if {person} is an employee.
+    """
+)
 kb.add_fact(
     "URL {url} is reachable",
     url="https://example.com/a?x=1&y=2",
     provenance=Provenance(source="scanner.py", line=41, kind="http-check"),
 )
-```
-
-Injected values become quoted opaque atoms. The application does not need to escape NL syntax in
-the value. If a template variable has no supplied value, `add_fact()` raises `ValueError`. The
-template must represent a fact, not a rule.
-
-## Async and sync queries
-
-Use the async API in an async application:
-
-```python
-result = await kb.ask("{person} may deploy?")
-```
-
-For synchronous application code, use:
-
-```python
 result = kb.ask_sync("{person} may deploy?")
 ```
 
-`ask_sync()` runs the async query outside an active event loop. Calling it from a running event
-loop raises `RuntimeError`; use `await ask()` there.
+`from_text()` and `from_file()` parse in strict mode by default. Use `add_text()` to append more facts
+or rules. `add_fact()` safely quotes each injected value and accepts keyword values corresponding to
+template variables. The read-only `program` property returns the current `Program` view.
+
+## Results and explanations
+
+A `RunResult` provides:
+
+- `matched`: whether at least one solution exists;
+- `first()`: the first `Solution`, or `None`;
+- `values(variable)`: values bound to a query variable, in solution order;
+- `solutions`: all successful answers;
+- `steps`: the global resolver trace;
+- `stats`: aggregate counters;
+- `truncated`: whether a search bound stopped exploration.
+
+A `Solution` exposes `bindings`, rendered `answer`, branch-local `proof`, and `explain()`. The
+explanation applies final query bindings and shows named rule applications, supporting evidence,
+source provenance, and negation-as-failure. `Proof.render()` is retained as a compatibility entry
+point to the same tree renderer.
+
+Semantic confidence values on a `Solution` are backend diagnostics, not probabilities that the full
+logical result is true. The application decides whether and how to gate on semantic evidence.
 
 ## Search limits
 
-Pass positive bounds when a rule graph needs explicit limits:
+Pass positive bounds when a legitimate rule graph needs explicit limits:
 
 ```python
-result = await kb.ask(
+result = await rules.ask(
     query,
+    facts=facts,
     max_depth=25,
     max_steps=2000,
     max_solutions=50,
 )
 ```
 
-Inspect `result.truncated` before treating a result set as complete.
-
-## Results
-
-A `RunResult` exposes:
-
-- `solutions`: successful answers;
-- `steps`: the global resolver trace;
-- `stats`: aggregate counters;
-- `truncated`: whether a search limit stopped exploration.
-
-Each `Solution` exposes:
-
-- `bindings`: query variable values;
-- `answer`: the rendered answer;
-- `proof`: the successful branch-local proof;
-- `semantic_confidences`: confidence signals from semantic proof steps;
-- `minimum_semantic_confidence`: the lowest such signal, or `None`.
-
-Semantic confidence is backend diagnostic metadata, not theorem probability.
+Inspect `result.truncated` before treating a bounded search as complete.
 
 ## Lower-level API
 

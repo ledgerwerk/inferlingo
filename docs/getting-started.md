@@ -1,7 +1,8 @@
 # Getting started
 
-This guide uses the access-policy example to show exact inference without a semantic backend or
-network access.
+InferLingo is for applications that collect trustworthy facts in ordinary code and want separate,
+reviewable rules to derive policy, eligibility, compliance, or impact results. The engine does not
+collect data from CI, scanners, APIs, or calendars, and it does not decide what action to take.
 
 ## Install
 
@@ -9,79 +10,98 @@ network access.
 python -m pip install inferlingo
 ```
 
-The base installation is sufficient for deterministic inference. Use `--exact-only` with the CLI.
-Install `inferlingo[jev]` only when you need optional semantic same-fact matching.
+The base installation is enough for deterministic inference. Python APIs default to
+`ExactUnifier`; use `--exact-only` with the CLI for offline exact execution. Optional pyjev support is
+for same-fact wording compatibility, not a requirement for the workflows below.
 
-## Validate a program
+## Run the release policy example
 
-The program in `examples/access_policy.nl` contains:
-
-```text
-Alice is an employee.
-Alice completed deployment training.
-Bob is an employee.
-Bob completed deployment training.
-Bob is suspended.
-
-{person} may deploy if
-    {person} is an employee and
-    {person} completed deployment training and
-    not {person} is suspended.
-```
-
-Validate syntax and strict rule safety:
+From a source checkout, run the example and the independent scenario suite:
 
 ```bash
-inferlingo validate examples/access_policy.nl
+python -m pip install -e .
+python examples/release_gate.py
+inferlingo test examples/release_policy.nl examples/release_policy.cases.toml
 ```
 
-`validate` parses the program and reports fact and rule-clause counts. It does not contact Jev.
+The Python example supplies sample evidence from CI, change management, a security scanner, and the
+release calendar. `release_policy.nl` contains reusable policy rules; the report derives readiness and
+positive blocker reasons while retaining evidence provenance. The scenario file tests the rules without
+running or depending on the Python fact collector.
 
-## Ask a variable query
+Inspect the separately maintained rules:
+
+```text
+{service} is release-ready if
+    {service} has passing tests and
+    {service} has an approved change and
+    {service} has acceptable vulnerability status and
+    not {service} is frozen.
+```
+
+Validate a rule pack without contacting any semantic backend:
+
+```bash
+inferlingo validate examples/release_policy.nl
+```
+
+For direct CLI evaluation, put runtime observations in fact-only files and compose them with the
+rules:
+
+```bash
+inferlingo run examples/release_policy.nl "checkout is release-ready?" \
+  --facts build_facts.nl --facts security_facts.nl --exact-only --explain
+```
+
+`--rules` can similarly add more rule files. Existing positional usage remains valid:
+
+```bash
+inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
+```
+
+## Embed a reusable rule set
+
+`RuleSet` separates immutable rules from runtime facts. A `Fact` safely inserts application values as
+opaque atoms and can attach source provenance to proof steps:
+
+```python
+from inferlingo import ExactUnifier, Fact, Provenance, RuleSet
+
+rules = RuleSet.from_file("examples/release_policy.nl", unifier=ExactUnifier())
+facts = [
+    Fact(
+        "{service} has passing tests",
+        {"service": "checkout"},
+        provenance=Provenance(source="ci/test-results.json", line=1, kind="ci"),
+    ),
+    Fact("{service} has an approved change", {"service": "checkout"}),
+    Fact("{service} has acceptable vulnerability status", {"service": "checkout"}),
+]
+result = rules.ask_sync("{service} is release-ready?", facts=facts)
+print(result.values("service"))
+```
+
+The output is `('checkout',)`. Each `RuleSet.ask()` evaluation gets fresh, isolated facts. In async
+code use `await rules.ask(...)`; use `rules.session()` when several queries should share a single
+request's facts. `KnowledgeBase` remains supported for existing mutable workflows.
+
+## Learn the language mechanics
+
+The access policy example demonstrates conjunction and safe negation-as-failure:
 
 ```bash
 inferlingo run examples/access_policy.nl "{person} may deploy?" --exact-only --explain
 ```
 
-Alice satisfies the two positive conditions and is not suspended, so the variable binds to Alice.
-Bob is excluded because `Bob is suspended` is provable. The `not` condition is negation-as-failure:
-the positive fact cannot be proved for the bound person. It is not a stored classical negative fact.
-
-A variable query prints bindings and a ground query prints `Yes.` or `No.`:
-
-```bash
-inferlingo run examples/access_policy.nl "Alice may deploy?" --exact-only
-```
-
-A valid query with no solutions is still a successful CLI execution.
-
-## Use Python
-
-```python
-from inferlingo import KnowledgeBase
-
-kb = KnowledgeBase.from_text(
-    """
-    Alice is an employee.
-    {person} may deploy if {person} is an employee.
-    """
-)
-result = kb.ask_sync("{person} may deploy?")
-print(result.solutions[0].bindings)
-```
-
-The output is:
-
-```python
-{"person": "Alice"}
-```
-
-The high-level API defaults to `ExactUnifier`, so this example is offline. Use `await kb.ask(...)`
-in an async application. See [Python API](python-api.md) for safe fact injection, provenance,
-limits, and result metadata.
+Alice matches; suspended Bob does not. `not {person} is suspended` means the positive suspension goal
+cannot be proved for the already-bound person. It is not a stored classical negative fact. See the
+[language reference](language.md) for safety constraints and the [concepts guide](concepts.md) for the
+execution model.
 
 ## Continue learning
 
-- Learn the syntax in [Language reference](language.md).
-- Understand proofs and global traces in [Proofs and provenance](proofs-and-provenance.md).
-- Add semantic same-fact matching with [Semantic unification](semantic-unification.md).
+- [Rule modeling patterns](patterns.md) for eligibility, blockers, recursion, and evidence.
+- [Python API](python-api.md) for sessions, composition, limits, and results.
+- [CLI guide](cli.md) for scenario schemas, file composition, and output options.
+- [Proofs and provenance](proofs-and-provenance.md) for explanations and evidence.
+- [Examples](examples.md) for the release gate, service outage, and advanced integrations.

@@ -2,54 +2,51 @@
 
 **Readable rules over facts your application already knows.**
 
-InferLingo is a small Python logic engine whose facts and rules look like ordinary sentences. Use
-Python or another deterministic subsystem to establish facts, let InferLingo derive consequences
-from explicit rules, and optionally use semantic unification when two differently worded sentences
-may express the same fact.
+InferLingo is a small explainable derivation and policy engine. Deterministic application code and
+external systems establish facts; explicit, version-controlled rules derive consequences; proofs can
+retain provenance back to the evidence. Optional pyjev integration is a narrow same-fact wording
+bridge, not general natural-language reasoning.
 
 ```text
-Python computes facts
-        |
-        v
+Python / scanners / APIs compute facts
+                    |
+                    v
 InferLingo applies explicit rules
-        |
-        v
-optional semantic unifier compares wording
-        |
-        v
+                    |
+                    v
+         derived results + proofs
+                    |
+                    v
 your application decides what to do
 ```
 
-InferLingo is not a general natural-language interpreter, chatbot, planner, source-code analyzer,
-arithmetic engine, or action runner. Semantic unification compares candidate statements as a
-possible same fact. It does not invent rules or implications.
+InferLingo does not fetch facts, parse arbitrary prose, perform arithmetic, classify intent, plan, or
+execute actions.
 
-## First exact workflow
+## First useful workflow
 
-Install the base package and run the deterministic birds example:
+From a source checkout, run the release policy demo and its offline rule scenarios:
 
 ```bash
-python -m pip install inferlingo
-inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
+python -m pip install -e .
+python examples/release_gate.py
+inferlingo test examples/release_policy.nl examples/release_policy.cases.toml
 ```
 
-The result includes the binding `bird = Tweety`. InferLingo used only the fact and rules in the
-program. The `--explain` option exposes the successful proof path.
-
-For a practical policy example, see [Getting started](getting-started.md). For the language
-syntax, see the [Language reference](language.md).
+The demo derives a ready service and actionable blockers from facts supplied by Python. For a
+mechanics-only introduction, see the [examples guide](examples.md).
 
 ## Choose a guide
 
-- [Getting started](getting-started.md): install, validate, and run an access policy.
-- [Concepts](concepts.md): facts, rules, queries, resolution, and bounded search.
-- [Language reference](language.md): statements, variables, rules, conjunction, alternatives,
-  negation, quoted atoms, comments, and strict safety.
-- [Python API](python-api.md): embed `KnowledgeBase`, inject facts, and inspect results.
-- [CLI guide](cli.md): commands, output modes, backend options, limits, and exit codes.
+- [Getting started](getting-started.md): run the release policy, scenarios, and Python API.
+- [Concepts](concepts.md): facts, rules, queries, proofs, and bounded search.
+- [Rule modeling patterns](patterns.md): eligibility, blockers, recursion, and evidence.
+- [Language reference](language.md): statements, directives, variables, negation, and strict safety.
+- [Python API](python-api.md): immutable rules, structured facts, sessions, and compatibility APIs.
+- [CLI guide](cli.md): scenario testing, file composition, output, and exit codes.
+- [Proofs and provenance](proofs-and-provenance.md): explanations and evidence.
 - [Semantic unification](semantic-unification.md): optional same-fact matching through pyjev.
-- [Proofs and provenance](proofs-and-provenance.md): inspect why a result exists.
-- [Examples](examples.md): runnable examples and the Python linter architecture.
+- [Examples](examples.md): release policy, service outage, access policy, and advanced integrations.
 - [Debugging](debugging.md): parse errors, traces, truncation, and semantic diagnostics.
 - [API reference](api/index.md): generated signatures and docstrings.
 - [Development](development.md): contributor setup, checks, tests, and versioning.
@@ -60,11 +57,12 @@ syntax, see the [Language reference](language.md).
 
 getting-started
 concepts
+patterns
 language
 python-api
 cli
-semantic-unification
 proofs-and-provenance
+semantic-unification
 examples
 debugging
 api/index

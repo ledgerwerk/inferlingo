@@ -5,13 +5,14 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 
-from .api import KnowledgeBase
+from .api import KnowledgeBase, RuleSet, Session
 from .engine import NLEngine
 from .errors import InferLingoError, RuleSafetyError, UnsafeNegationError
 from .models import (
     BackendUsage,
     Check,
     Clause,
+    Fact,
     Literal,
     Program,
     Proof,
@@ -40,6 +41,7 @@ __all__ = [
     "BackendUsage",
     "Check",
     "Clause",
+    "Fact",
     "ExactUnifier",
     "InferLingoError",
     "KnowledgeBase",
@@ -54,6 +56,8 @@ __all__ = [
     "Query",
     "RunResult",
     "RunStats",
+    "RuleSet",
+    "Session",
     "Sentence",
     "Solution",
     "Unification",

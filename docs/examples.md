@@ -1,77 +1,96 @@
 # Examples
 
-The source examples are runnable demonstrations. The exact examples work offline with the base
-package. The family example needs the optional semantic backend.
+The examples show InferLingo's product boundary: deterministic application code supplies facts;
+readable rules derive consequences; successful results carry proofs and evidence. The release gate,
+service outage, and policy scenarios work offline with exact inference and no pyjev dependency.
 
-## `birds.nl`
+## Release gate: separate facts, rules, and scenarios
 
-Purpose: the smallest fact to rule to rule chain.
+`examples/release_gate.py` uses the structured `Fact` and reusable `RuleSet` APIs. It simulates inputs
+from CI, change management, a security scanner, and a release calendar, then derives readiness and
+positive blocker reasons from `examples/release_policy.nl`.
 
 ```bash
-inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
+python examples/release_gate.py
+inferlingo test examples/release_policy.nl examples/release_policy.cases.toml
 ```
 
-It demonstrates explicit derivation and a variable binding.
+The first command reports `checkout` as ready and explains blockers for `billing`, including evidence
+locations. The TOML suite tests the rule pack independently from Python fact collection. This example
+shows when rules earn their keep: multiple evidence sources contribute to policy that can change
+without rewriting data collectors.
 
-## `access_policy.nl`
+## Service outage blast radius: `dependency_impact.nl`
 
-Purpose: conjunction, negation-as-failure, and a variable result.
+The service catalog describes a dependency chain from `checkout-web` through `checkout-api` and
+`payments` to an unavailable PostgreSQL service. Recursive rules derive affected services; the proof
+records the dependency path.
+
+```bash
+inferlingo run examples/dependency_impact.nl "{service} is affected?" --exact-only --explain
+```
+
+Expected affected services: `payments`, `checkout-api`, and `checkout-web`.
+
+## Eligibility and access policy: `access_policy.nl`
+
+This example combines employee and training facts with a suspension check:
 
 ```bash
 inferlingo run examples/access_policy.nl "{person} may deploy?" --exact-only --explain
 ```
 
-Alice succeeds while suspended Bob does not.
+Expected binding: `person = Alice`. Negation as failure means the positive suspension goal could not
+be proved for the already-bound person; it is not a stored classical negative fact. Use exact
+inference for security-sensitive authorization.
 
-## `dependency_impact.nl`
+## Advanced: deterministic analyzer + external policy
 
-Purpose: quoted atoms and recursion.
-
-```bash
-inferlingo run examples/dependency_impact.nl "{service} is affected?" --exact-only --json
-```
-
-Expected bindings, ignoring order, are `auth`, `api`, and `web`.
-
-## `family.nl`
-
-Purpose: semantic equivalence plus an explicit implication rule. It requires
-`inferlingo[jev]` and the authentication configured for the selected pyjev backend. Do not make
-this the first example because it is not offline.
-
-## `api_usage.py`
-
-Purpose: high-level Python API, fact injection, provenance, and proof rendering.
-
-```bash
-python examples/api_usage.py
-```
-
-## Python linter
-
-`python_lint_rules.nl` and `python_linter.py` demonstrate a real embedding pattern:
+`python_linter.py` is an advanced embedding pattern, not InferLingo's primary product story. The
+Python AST analyzer computes exact source observations; a separately maintained `.nl` ruleset derives
+review findings and preserves source locations. Extraction is implementation logic; review policy is
+organization logic.
 
 ```bash
 python examples/python_linter.py examples/python_linter_fixture.py
 ```
 
-The data flow is:
+## Language tutorial: `birds.nl`
 
-```text
-ast.parse()
-    |
-    | deterministic observations
-    v
-KnowledgeBase.add_fact()
-    |
-    | exact .nl rules
-    v
-"Function {fn} needs review?"
-    |
-    v
-proof with source provenance
+This small program teaches fact/rule chaining and syntax. It derives that Tweety can fly only from the
+explicit canary and bird rules; it demonstrates mechanics rather than the product's value proposition.
+
+```bash
+inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
 ```
 
-The script requires the project to be installed or otherwise available on Python's import path.
-Running a script in `examples/` changes Python's initial import search root, so standard checkout
-instructions should install the project before running it.
+## Optional semantic equivalence: `family.nl`
+
+This advanced example separates same-fact wording compatibility from explicit logical implications.
+Semantic matching may recognize differently worded statements as equivalent; the father-to-parent
+implication still comes from a rule. Install the optional backend only when this interoperability
+feature is needed:
+
+```bash
+python -m pip install 'inferlingo[jev]'
+inferlingo run examples/family.nl "Homer is a parent of Lisa?" --explain
+```
+
+## Python API: `api_usage.py`
+
+This smaller embedding example shows the compatible mutable `KnowledgeBase` API, fact injection,
+provenance, and proof rendering. The release-gate example demonstrates `RuleSet` and `Fact` for the
+isolated application-policy lifecycle.
+
+```bash
+python examples/api_usage.py
+```
+
+## Test coverage
+
+Every `.nl` file under `examples/` is parsed in strict mode, and deterministic examples are exercised
+without a semantic backend:
+
+```bash
+pytest -q tests/test_examples.py
+```

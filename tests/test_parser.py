@@ -45,3 +45,32 @@ def test_quoted_atoms_preserve_keywords_and_escaped_content():
 def test_unmatched_quote_is_a_parse_error():
     with pytest.raises(ParseError):
         parse_program('Message "unterminated is stored.')
+
+
+def test_rule_comment_directives_attach_to_next_rule_after_facts():
+    program = parse_program(
+        """
+        # @rule release-ready
+        # @description A service has all required release evidence.
+        checkout has passing tests.
+        {service} is release-ready if {service} has passing tests.
+        """,
+        source="release_policy.nl",
+    )
+
+    assert program.clauses[0].name is None
+    rule = program.clauses[1]
+    assert rule.name == "release-ready"
+    assert rule.metadata == {"description": "A service has all required release evidence."}
+    assert rule.source == "release_policy.nl"
+    with pytest.raises(TypeError):
+        rule.metadata["description"] = "changed"  # type: ignore[index]
+
+
+def test_rule_directives_reject_duplicates_invalid_names_and_dangling_comments():
+    with pytest.raises(ParseError, match="duplicate @rule directive"):
+        parse_program("# @rule first\n# @rule second\n{person} is trusted if {person} is known.")
+    with pytest.raises(ParseError, match="@rule names must start with a letter"):
+        parse_program("# @rule not a valid id\n{person} is trusted if {person} is known.")
+    with pytest.raises(ParseError, match="@rule directive was not followed by a rule"):
+        parse_program("# @rule orphan\nAlice is known.")

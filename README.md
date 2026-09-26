@@ -5,140 +5,111 @@
 
 # InferLingo
 
-InferLingo is a small Python rule engine for facts and rules written as readable sentences.
-Use deterministic code to establish facts, InferLingo to derive consequences from explicit rules,
-and optional semantic unification when differently worded sentences may express the same fact.
+InferLingo is a small Python rule engine for deriving explainable policy, eligibility, compliance,
+and impact results from facts your application already knows.
 
-InferLingo is not a chatbot, planner, arithmetic engine, source-code analyzer, or action runner.
-Python or another deterministic subsystem supplies facts. InferLingo applies the rules you write,
-builds inspectable proofs, and returns derived consequences.
+Use it when facts and rules have different lifecycles: collect trustworthy observations in Python or
+external systems, keep changing policy in readable rule files, and retain proofs showing which
+conditions and evidence produced a result. InferLingo applies explicit rules; it is not a chatbot,
+planner, arithmetic engine, source-code analyzer, or action runner.
+
+```text
+Python / APIs / scanners collect facts
+                 |
+                 v
+InferLingo derives consequences from explicit rules
+                 |
+                 v
+proofs + provenance explain successful results
+                 |
+                 v
+your application decides what to do
+```
 
 ## Install
-
-Install the base package for deterministic inference:
 
 ```bash
 python -m pip install inferlingo
 ```
 
-The base package is fully usable offline. The Python `KnowledgeBase` API defaults to
-`ExactUnifier`, and the first CLI workflows should use `--exact-only`.
-
-Install the optional semantic backend only when differently worded sentences should be compared:
-
-```bash
-python -m pip install 'inferlingo[jev]'
-```
-
-Authentication and provider configuration belong to pyjev and its configured Jev backend.
-
-## 60-second exact example
-
-Create `rules.nl`:
-
-```text
-Alice is an employee.
-Bob is an employee.
-Bob is suspended.
-
-{person} may deploy if
-    {person} is an employee and
-    not {person} is suspended.
-```
-
-Run it without a model or network access:
-
-```bash
-inferlingo run rules.nl "{person} may deploy?" --exact-only --explain
-```
-
-The solution binds `person = Alice`. The result follows only from the facts and explicit rule.
-Negation is failure to prove the positive goal for the already-bound person, not a stored classical
-negative fact.
-
-The smallest chain is also available:
-
-```bash
-inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
-```
-
-It derives `bird = Tweety` from the fact and rules in `examples/birds.nl`, not from outside knowledge.
-
-## How it fits into Python
-
-```python
-from inferlingo import KnowledgeBase
-
-kb = KnowledgeBase.from_text(
-    """
-    Alice is an employee.
-    {person} may deploy if {person} is an employee.
-    """
-)
-result = kb.ask_sync("{person} may deploy?")
-print(result.solutions[0].bindings)
-```
-
-The result is `{"person": "Alice"}`. Use `await kb.ask(...)` in asynchronous applications.
-`ask_sync()` must not be called from a running event loop.
-
-`KnowledgeBase.add_fact()` safely quotes injected application values and can carry
-`Provenance` metadata into proof steps:
-
-```python
-from inferlingo import KnowledgeBase, Provenance
-
-kb = KnowledgeBase.from_text("URL {url} is approved if URL {url} is reachable.")
-kb.add_fact(
-    "URL {url} is reachable",
-    url="https://example.com/a?x=1&y=2",
-    provenance=Provenance(source="scanner.py", line=41, kind="http-check"),
-)
-```
-
-## Optional semantic unification
-
-`PyJevUnifier` first tries exact wording and only sends differently worded candidates to the
-semantic backend. Semantic matching is a same-fact equivalence check. It does not invent logical
-implications. An explicit rule is still required to derive `parent` from `father`.
+The base package is usable offline and uses exact unification by default in the Python API. The CLI
+preserves its semantic-capable default for `run`; pass `--exact-only` for deterministic, offline
+execution. Install optional semantic support only when differently worded statements may express the
+same fact:
 
 ```bash
 python -m pip install 'inferlingo[jev]'
-pyjev auth set
-pyjev auth test
-inferlingo run examples/family.nl "Homer is a parent of Lisa?" --explain
 ```
 
-The CLI uses `PyJevUnifier` by default for `run`; pass `--exact-only` to force deterministic
-offline execution. Semantic confidence and backend checks are diagnostic signals, not theorem
-probabilities.
+Optional pyjev matching compares candidate facts. It does not invent logical implications or replace
+explicit policy rules. For authorization and other high-consequence decisions, prefer exact inference.
+
+## 60-second example: release policy
+
+From a source checkout, run the flagship example and its rule scenarios:
+
+```bash
+python -m pip install -e .
+python examples/release_gate.py
+inferlingo test examples/release_policy.nl examples/release_policy.cases.toml
+```
+
+Python supplies simulated facts from CI, change management, a security scanner, and a release
+calendar. The rules derive that `checkout` is ready and report four actionable blockers for `billing`,
+with evidence locations. The rule pack and TOML scenarios can be reviewed and tested independently of
+fact collection. InferLingo does not contact those systems or decide what action to take.
+
+## Embed policy in Python
+
+```python
+from inferlingo import ExactUnifier, Fact, Provenance, RuleSet
+
+rules = RuleSet.from_file("examples/release_policy.nl", unifier=ExactUnifier())
+facts = [
+    Fact(
+        "{service} has passing tests",
+        {"service": "checkout"},
+        provenance=Provenance(source="ci/test-results.json", line=1, kind="ci"),
+    ),
+    Fact("{service} has an approved change", {"service": "checkout"}),
+    Fact("{service} has acceptable vulnerability status", {"service": "checkout"}),
+]
+result = rules.ask_sync("{service} is release-ready?", facts=facts)
+
+if result.matched:
+    print(result.values("service"))  # ('checkout',)
+```
+
+`RuleSet` keeps reusable rules separate from per-evaluation facts. Each call gets an isolated fact
+set; structured `Fact` values are safely quoted, and provenance flows into successful proof steps.
+Use `await rules.ask(...)` in async applications. `KnowledgeBase` remains available for mutable,
+backwards-compatible workflows.
+
+## Why not just Python?
+
+A few conditions may be simpler as an `if` statement. InferLingo becomes useful when multiple
+independent evidence sources feed rules that change separately from collectors, when rule packs need
+scenario tests, or when decisions need inspectable derivations and source provenance. Keep numeric,
+date, API, and parsing work in deterministic application code; turn its results into facts for the
+rule engine.
 
 ## Documentation
 
-Read the [full documentation](https://github.com/ledgerwerk/inferlingo/tree/main/docs) for:
-
 - [Getting started](docs/getting-started.md)
+- [Concepts](docs/concepts.md)
+- [Rule modeling patterns](docs/patterns.md)
 - [Language reference](docs/language.md)
 - [Python API](docs/python-api.md)
 - [CLI guide](docs/cli.md)
-- [Semantic unification](docs/semantic-unification.md)
 - [Proofs and provenance](docs/proofs-and-provenance.md)
+- [Semantic unification](docs/semantic-unification.md)
 - [Examples](docs/examples.md)
-
-The documentation also covers strict safety validation, quoted atoms, recursion, search limits,
-traces, debugging, development, and the generated API reference.
+- [API reference](docs/api/index.md)
 
 ## Development
 
-For a source checkout, install contributor and documentation dependencies:
-
 ```bash
 python -m pip install -e '.[dev,docs]'
-```
-
-Run the quality checks:
-
-```bash
 python -m compileall inferlingo examples docs
 pytest
 ruff check .
@@ -147,8 +118,8 @@ python -m build
 twine check dist/*
 ```
 
-The test suite is offline. Semantic tests use fake or injected clients and do not require a live
-API key.
+The test suite is offline. Semantic tests use fake or injected clients and do not require live
+credentials.
 
 ## License
 

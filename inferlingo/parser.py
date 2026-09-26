@@ -20,6 +20,29 @@ class SourceLocation:
     column: int | None = None
 
 
+_RULE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]*")
+
+
+def _rule_directive(raw: str, *, source: str | None, line: int) -> tuple[str, str] | None:
+    stripped = raw.lstrip()
+    if not stripped.startswith("#"):
+        return None
+    match = re.match(r"^#\s*@(?P<key>rule|description)\b(?P<value>.*)$", stripped, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    key = match.group("key").lower()
+    value = match.group("value").strip()
+    if not value:
+        raise _parse_error(f"@{key} requires a value", source=source, line=line)
+    if key == "rule" and _RULE_NAME_RE.fullmatch(value) is None:
+        raise _parse_error(
+            "@rule names must start with a letter and contain only letters, digits, '.', '_' or '-'",
+            source=source,
+            line=line,
+        )
+    return key, value
+
+
 def _strip_comment(text: str) -> str:
     in_quote = False
     escaped = False
@@ -217,9 +240,15 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
     """Parse facts and rules into a `Program`, validating strict safety by default."""
     clauses: list[Clause] = []
     statements: list[tuple[int, str]] = []
+    directive_events: list[tuple[int, str, str]] = []
     pending: list[str] = []
     pending_line = 1
     for line_number, raw in enumerate(text.splitlines(), start=1):
+        if not pending:
+            directive = _rule_directive(raw, source=source, line=line_number)
+            if directive is not None:
+                directive_events.append((line_number, directive[0], directive[1]))
+                continue
         line = _strip_comment(raw).strip()
         if not line:
             continue
@@ -232,7 +261,15 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
     if pending:
         statements.append((pending_line, " ".join(pending)))
 
+    pending_directives: dict[str, tuple[str, int]] = {}
+    directive_index = 0
     for line_number, line in statements:
+        while directive_index < len(directive_events) and directive_events[directive_index][0] < line_number:
+            directive_line, key, value = directive_events[directive_index]
+            if key in pending_directives:
+                raise _parse_error(f"duplicate @{key} directive before a rule", source=source, line=directive_line)
+            pending_directives[key] = (value, directive_line)
+            directive_index += 1
         try:
             parts = _rule_parts(line)
             if parts is None:
@@ -251,16 +288,34 @@ def parse_program(text: str, *, source: str | None = "<memory>", strict: bool = 
                 sentence_tokens(head)
                 for literal in literals:
                     sentence_tokens(literal.sentence)
+                metadata: dict[str, object] = {}
+                description = pending_directives.get("description")
+                if description is not None:
+                    metadata["description"] = description[0]
+                rule_name = pending_directives.get("rule")
                 clauses.append(
                     Clause(
                         head=strip_sentence(head),
                         body=literals,
                         source=source or line,
                         line=line_number,
+                        name=rule_name[0] if rule_name is not None else None,
+                        metadata=metadata,
                     )
                 )
+            pending_directives.clear()
         except LexError as exc:
             raise _parse_error(str(exc), source=source, line=line_number) from exc
+
+    while directive_index < len(directive_events):
+        directive_line, key, value = directive_events[directive_index]
+        if key in pending_directives:
+            raise _parse_error(f"duplicate @{key} directive before a rule", source=source, line=directive_line)
+        pending_directives[key] = (value, directive_line)
+        directive_index += 1
+    if pending_directives:
+        key, (_value, directive_line) = next(reversed(pending_directives.items()))
+        raise _parse_error(f"@{key} directive was not followed by a rule", source=source, line=directive_line)
     if strict:
         _validate_program(clauses, source=source)
     if not clauses:

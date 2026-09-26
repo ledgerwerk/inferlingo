@@ -1,6 +1,8 @@
 # Semantic unification
 
-Semantic unification is optional. Install it with:
+Semantic unification is an optional interoperability aid for applications that already have candidate
+facts. It is not general natural-language understanding, extraction, classification, or policy reasoning.
+Install it with:
 
 ```bash
 python -m pip install 'inferlingo[jev]'
@@ -13,6 +15,13 @@ does not define a second credential system.
 
 `PyJevUnifier` first attempts deterministic wording unification. Only differently worded candidate
 pairs reach semantic evaluation. Enabling semantic mode therefore does not replace exact logic.
+
+## Security boundary
+
+For authorization, payments, destructive infrastructure changes, and other high-consequence decisions,
+use exact facts and explicit rules by default. Semantic unification can reconcile wording, but an
+ambiguous same-fact judgment must not silently authorize an action. Keep `ExactUnifier` for policy
+enforcement unless your application deliberately validates and gates semantic evidence.
 
 Semantic matching is intended for same-fact equivalence, including possible paraphrases, synonyms,
 and different word order. It should reject merely related statements, one-way implication,

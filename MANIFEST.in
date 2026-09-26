@@ -1,3 +1,5 @@
 include README.md LICENSE
 recursive-include examples *.nl *.py README.md
 recursive-include tests *.py
+recursive-include examples *.toml
+recursive-include docs *.md

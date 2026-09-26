@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from examples.python_linter import facts_for_file
+from examples.release_gate import render_report
 from inferlingo import ExactUnifier, KnowledgeBase, parse_program
 
 ROOT = Path(__file__).parents[1]
@@ -21,7 +22,22 @@ def test_exact_examples_execute_without_backend():
     assert {
         solution.bindings["service"]
         for solution in ask("examples/dependency_impact.nl", "{service} is affected?").solutions
-    } == {"auth", "api", "web"}
+    } == {"payments", "checkout-api", "checkout-web"}
+
+
+def test_release_gate_demo_derives_provenance_backed_blockers():
+    report = asyncio.run(render_report())
+
+    assert "READY\n  checkout" in report
+    assert "billing" in report
+    assert "tests failing" in report
+    assert "change not approved" in report
+    assert "critical vulnerabilities" in report
+    assert "release freeze" in report
+    assert "ci/test-results.json:18" in report
+    assert "change/CHG-482.md:1" in report
+    assert "scanner/report.json:23" in report
+    assert "calendar/release-freeze:1" in report
 
 
 def test_python_linter_rules_derive_findings():

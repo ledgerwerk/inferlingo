@@ -44,7 +44,10 @@ class _InternalClause:
     body: tuple[_Goal, ...]
     source: str
     line: int
-    provenance: Any = None
+    provenance: Any
+    name: str | None
+    description: str | None
+    is_fact: bool
 
 
 @dataclass(slots=True)
@@ -232,16 +235,20 @@ class NLEngine:
             state.backend_requests += unification.usage.requests or unification.calls
             state.semantic_questions += unification.usage.questions
             state.cache_hits += int(unification.cached or unification.usage.cached)
-            success = unification.unified and _merge_internal(substitution, unification.bindings) is not None
+            merged = _merge_internal(substitution, unification.bindings) if unification.unified else None
+            success = merged is not None
             if unification.method == "exact":
                 state.exact_matches += int(success)
             else:
                 state.semantic_matches += int(success)
+            display_substitution = merged if merged is not None else substitution
+            display_goal = _render_unquoted(substitute_tokens(current_tokens, display_substitution))
+            display_clause = _render_unquoted(substitute_tokens(internal.head, display_substitution))
             step = ProofStep(
                 kind="success" if success else "failure",
                 depth=depth,
-                goal=current_sentence,
-                clause=_render_unquoted(internal.head),
+                goal=display_goal,
+                clause=display_clause,
                 method=unification.method,
                 confidence=unification.confidence,
                 bindings=_display_bindings(unification.bindings),
@@ -256,11 +263,11 @@ class NLEngine:
                 checks=unification.checks,
                 request_ids=unification.usage.request_ids,
                 usage=unification.usage,
+                rule_name=internal.name,
+                rule_description=internal.description,
+                is_fact=internal.is_fact,
             )
             state.steps.append(step)
-            if not success:
-                continue
-            merged = _merge_internal(substitution, unification.bindings)
             if merged is None:
                 continue
             next_goals = [
@@ -348,7 +355,17 @@ class NLEngine:
         scope = state.fresh_counter
         head = sentence_tokens(clause.head, scope=scope)
         body = tuple(_Goal(sentence_tokens(literal.sentence, scope=scope), literal.negated) for literal in clause.body)
-        return _InternalClause(head, body, clause.source, clause.line, clause.provenance)
+        description = clause.metadata.get("description")
+        return _InternalClause(
+            head,
+            body,
+            clause.source,
+            clause.line,
+            clause.provenance,
+            clause.name,
+            description if isinstance(description, str) else None,
+            clause.is_fact,
+        )
 
     @staticmethod
     def _trace_cutoff(

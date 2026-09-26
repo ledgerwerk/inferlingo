@@ -104,12 +104,19 @@ async def lint(path: str | Path):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the InferLingo Python linter example.")
+    parser = argparse.ArgumentParser(
+        description="Advanced example: deterministic Python observations feeding explicit InferLingo policy rules."
+    )
     parser.add_argument("path", type=Path, help="Python source file to inspect")
     args = parser.parse_args()
     result = asyncio.run(lint(args.path))
+    print("InferLingo deterministic analyzer + policy demo")
+    print("Python AST observations -> explicit .nl policy rules -> findings")
+    if not result.solutions:
+        print("No review findings.")
+        return
     for solution in result.solutions:
-        print(solution.bindings)
+        print(f"Function {solution.bindings['fn']} needs review")
         print(solution.proof.render())
 
 

@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "inferlingo"
 dynamic = ["version"]
-description = "A small model-neutral logic engine for natural-language facts, rules, and semantic unification."
+description = "An explainable Python rule engine for deriving policy and impact from application facts."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "holgern" }]
-keywords = ["logic", "prolog", "natural-language", "reasoning", "semantic-unification", "inference"]
+keywords = ["rule-engine", "policy", "eligibility", "provenance", "inference"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "typer>=0.16,<1",
+  "tomli>=2,<3; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -32,7 +33,6 @@ jev = [
   "pyjev>=0.1.0,<1",
 ]
 dev = [
-  "tomli>=2,<3",
   "pytest>=9,<10",
   "pyjev>=0.1.0,<1",
   "ruff>=0.16,<1",
