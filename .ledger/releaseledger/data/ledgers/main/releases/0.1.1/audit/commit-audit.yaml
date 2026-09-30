@@ -1,0 +1,192 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: 0.1.1
+git_base_ref: v0.1.0
+git_base_sha: 3fc34c7c62ab48fc8dcbb6e676acdf99847e567d
+git_head_ref: HEAD
+git_head_sha: 655a8160ccf209765d7bb52a79db1e4aa1a53734
+git_range: 3fc34c7c62ab48fc8dcbb6e676acdf99847e567d..655a8160ccf209765d7bb52a79db1e4aa1a53734
+commit_count: 3
+rows:
+  - sha: aa8ce76543e35e7dfce74730b05c4563a556a5bd
+    source_ref: git:aa8ce76543e35e7dfce74730b05c4563a556a5bd
+    short_sha: aa8ce76
+    changed_paths:
+      - README.md
+    stats:
+      files_changed: 1
+      insertions: 5
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - README.md
+    observed_behavior:
+      The README adds linked PyPI-version and coverage badges plus
+      supported-Python and download-count badges.
+    public_impact: docs
+    decision: accepted
+    stale: false
+    evidence_subject: "doc: add badges"
+    target_entry_id: entry-0006
+    notes: The badge-only change is recorded as a documentation entry.
+  - sha: 8964ad31f32570ead343d0fda46e57b29069a92c
+    source_ref: git:8964ad31f32570ead343d0fda46e57b29069a92c
+    short_sha: 8964ad3
+    changed_paths:
+      - MANIFEST.in
+      - README.md
+      - docs/cli.md
+      - docs/concepts.md
+      - docs/examples.md
+      - docs/getting-started.md
+      - docs/index.md
+      - docs/language.md
+      - docs/patterns.md
+      - docs/proofs-and-provenance.md
+      - docs/python-api.md
+      - docs/semantic-unification.md
+      - examples/README.md
+      - examples/dependency_impact.nl
+      - examples/python_linter.py
+      - examples/release_gate.py
+      - examples/release_policy.cases.toml
+      - examples/release_policy.nl
+      - inferlingo/__init__.py
+      - inferlingo/api.py
+      - inferlingo/cli.py
+      - inferlingo/engine.py
+      - inferlingo/models.py
+      - inferlingo/parser.py
+      - pyproject.toml
+      - tests/test_api.py
+      - tests/test_cli.py
+      - tests/test_docs.py
+      - tests/test_examples.py
+      - tests/test_parser.py
+      - tests/test_proofs.py
+    stats:
+      files_changed: 31
+      insertions: 1673
+      deletions: 523
+    inspected: true
+    inspected_paths:
+      - MANIFEST.in
+      - README.md
+      - docs/cli.md
+      - docs/concepts.md
+      - docs/examples.md
+      - docs/getting-started.md
+      - docs/index.md
+      - docs/language.md
+      - docs/patterns.md
+      - docs/proofs-and-provenance.md
+      - docs/python-api.md
+      - docs/semantic-unification.md
+      - examples/README.md
+      - examples/dependency_impact.nl
+      - examples/python_linter.py
+      - examples/release_gate.py
+      - examples/release_policy.cases.toml
+      - examples/release_policy.nl
+      - inferlingo/__init__.py
+      - inferlingo/api.py
+      - inferlingo/cli.py
+      - inferlingo/engine.py
+      - inferlingo/models.py
+      - inferlingo/parser.py
+      - pyproject.toml
+      - tests/test_api.py
+      - tests/test_cli.py
+      - tests/test_docs.py
+      - tests/test_examples.py
+      - tests/test_parser.py
+      - tests/test_proofs.py
+    observed_behavior:
+      Added immutable RuleSet, structured Fact, and isolated Session
+      evaluation; rule files can be composed, runtime values are quoted safely, and
+      results expose convenience accessors. The parser accepts named-rule metadata,
+      proof explanations resolve query bindings and show evidence provenance, and the
+      CLI supports rule/fact file composition, exact offline queries, and TOML scenarios.
+      New release-policy examples and API, CLI, and rule-modeling guides exercise these
+      workflows.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: improve API and docs"
+    target_entry_id: entry-0001
+    notes:
+      The release-policy example and documentation are supporting public notes;
+      the API entry owns this commit's coverage reference.
+  - sha: 655a8160ccf209765d7bb52a79db1e4aa1a53734
+    source_ref: git:655a8160ccf209765d7bb52a79db1e4aa1a53734
+    short_sha: 655a816
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/events/events.jsonl
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.0/release.md
+      - .ledger/releaseledger/data/ledgers/main/releases/0.1.1/release.md
+      - README.md
+      - docs/changelog.md
+      - docs/cli.md
+      - docs/development.md
+      - docs/getting-started.md
+      - docs/proofs-and-provenance.md
+      - docs/semantic-unification.md
+      - examples/api_usage.py
+      - examples/python_linter.py
+      - examples/release_policy.cases.toml
+      - inferlingo/cli.py
+      - inferlingo/models.py
+      - inferlingo/unifier.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_docs.py
+      - tests/test_examples.py
+      - tests/test_unifier.py
+      - tests/test_unifier_batch.py
+      - tests/test_version.py
+    stats:
+      files_changed: 23
+      insertions: 551
+      deletions: 120
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/changelog.md
+      - docs/cli.md
+      - docs/development.md
+      - docs/getting-started.md
+      - docs/proofs-and-provenance.md
+      - docs/semantic-unification.md
+      - examples/api_usage.py
+      - examples/python_linter.py
+      - examples/release_policy.cases.toml
+      - inferlingo/cli.py
+      - inferlingo/models.py
+      - inferlingo/unifier.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_docs.py
+      - tests/test_examples.py
+      - tests/test_unifier.py
+      - tests/test_unifier_batch.py
+      - tests/test_version.py
+    observed_behavior:
+      Updated the optional pyjev integration to typed batched evaluation
+      and retained backend request IDs, model identity, numeric usage, checks, and cache
+      metadata in semantic inference results. Proof explanations substitute final query
+      bindings in rule names and descriptions. Documentation and examples now demonstrate
+      release-policy scenarios, and version checks tie the package, CLI, development
+      guide, and changelog together.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare next release"
+    target_entry_id: entry-0004
+    notes:
+      The three .ledger/releaseledger files in this changeset are release-ledger
+      storage records. They were not inspected as product source and are excluded from
+      changelog evidence; the releaseledger CLI remains the only interface used for
+      that state.
