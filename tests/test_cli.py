@@ -5,6 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from inferlingo.cli import app
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -16,6 +20,25 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def test_cli_defaults_to_exact_without_pyjev_and_requires_opt_in(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pyjev", None)
+    runner = CliRunner()
+    args = ["run", "examples/birds.nl", "{bird} can fly?"]
+
+    exact = runner.invoke(app, args)
+    assert exact.exit_code == 0
+    assert "Tweety" in exact.stdout
+    assert "semantic backend" not in exact.stdout
+
+    semantic = runner.invoke(app, [*args, "--semantic"])
+    assert semantic.exit_code == 1
+    assert "Install InferLingo with the Jev extra" in semantic.output
+
+    conflicting = runner.invoke(app, [*args, "--semantic", "--exact-only"])
+    assert conflicting.exit_code == 2
+    assert "cannot be used together" in conflicting.output
 
 
 def test_cli_json_is_stable_and_includes_stats():
@@ -54,9 +77,15 @@ def test_cli_runs_offline_toml_scenarios():
 
     assert completed.returncode == 0
     assert "PASS healthy checkout service is release ready" in completed.stdout
+    assert "PASS failing tests produce a blocker" in completed.stdout
+    assert "PASS required change approval produces a blocker" in completed.stdout
+    assert "PASS critical vulnerabilities produce a blocker" in completed.stdout
+    assert "PASS release freeze produces a blocker" in completed.stdout
+    assert "PASS missing passing tests blocks readiness" in completed.stdout
+    assert "PASS missing approved change blocks readiness" in completed.stdout
+    assert "PASS missing acceptable vulnerability status blocks readiness" in completed.stdout
     assert "PASS release freeze blocks readiness" in completed.stdout
-    assert "PASS critical vulnerability becomes a blocker" in completed.stdout
-    assert "3 passed, 0 failed" in completed.stdout
+    assert "9 passed, 0 failed" in completed.stdout
 
 
 def test_cli_composes_multiple_rule_and_fact_files(tmp_path):

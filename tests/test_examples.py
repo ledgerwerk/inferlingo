@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 
 from examples.python_linter import facts_for_file
@@ -38,6 +40,20 @@ def test_release_gate_demo_derives_provenance_backed_blockers():
     assert "change/CHG-482.md:1" in report
     assert "scanner/report.json:23" in report
     assert "calendar/release-freeze:1" in report
+
+
+def test_api_usage_example_renders_bound_explanation():
+    completed = subprocess.run(
+        [sys.executable, "-m", "examples.api_usage"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "Function process_order may swallow errors" in completed.stdout
+    assert "{fn}" not in completed.stdout
 
 
 def test_python_linter_rules_derive_findings():
@@ -86,6 +102,29 @@ def safe_order(order):
     result = asyncio.run(kb.ask("Function {fn} needs review?"))
     assert {solution.bindings["fn"] for solution in result.solutions} == {"process_order"}
     assert any(step.provenance and step.provenance.source == str(source) for step in result.solutions[0].proof.steps)
+
+
+def test_python_linter_cli_renders_bound_explanation(tmp_path):
+    source = tmp_path / "orders.py"
+    source.write_text(
+        "def process_order(order):\n"
+        "    try:\n"
+        "        save_order(order)\n"
+        "    except Exception:\n"
+        "        send_notification(order)\n",
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [sys.executable, "-m", "examples.python_linter", str(source)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "Function process_order needs review" in completed.stdout
+    assert "{fn}" not in completed.stdout
 
 
 def test_all_nl_examples_parse_in_strict_mode():

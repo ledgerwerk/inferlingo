@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 try:
@@ -44,6 +46,9 @@ def test_readme_has_release_install_and_exact_quickstart() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "pip install inferlingo" in readme
     assert "--exact-only" in readme
+    assert "exact unification by default" in readme
+    assert 'inferlingo run examples/birds.nl "{bird} can fly?"' in readme
+    assert "--semantic" in readme
     assert "inferlingo[jev]" in readme
     assert ".[dev,docs]" in readme
 
@@ -53,3 +58,15 @@ def test_docs_extra_is_not_a_runtime_dependency() -> None:
     project = metadata["project"]
     assert project["optional-dependencies"]["docs"]
     assert not any(name.startswith(("sphinx", "myst-parser")) for name in project["dependencies"])
+
+
+def test_python_fences_parse() -> None:
+    paths = (ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md")))
+    pattern = re.compile(r"^```python[^\n]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+    parsed = 0
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        for index, match in enumerate(pattern.finditer(source), start=1):
+            ast.parse(match.group(1), filename=f"{path.relative_to(ROOT)}:python-fence-{index}")
+            parsed += 1
+    assert parsed > 0

@@ -30,9 +30,8 @@ Semantic documentation examples may be illustrative unless they use a fake backe
 
 ## Versioning
 
-Versions come from Git tags through setuptools-scm. `inferlingo/_version.py` is generated and must
-not be edited by hand. A v0.1.0 release workflow should resolve the package version from the
-corresponding Git tag.
+Versions come from Git tags through setuptools-scm. v0.1.0 was released from tag `v0.1.0` on 2026-09-21, and the planned next release is `v0.1.1`.
+`inferlingo/_version.py` is generated and must not be edited by hand. Development versions should resolve from the Git tag state.
 
 ## Changelog
 

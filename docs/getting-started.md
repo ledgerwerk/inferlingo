@@ -10,9 +10,7 @@ collect data from CI, scanners, APIs, or calendars, and it does not decide what 
 python -m pip install inferlingo
 ```
 
-The base installation is enough for deterministic inference. Python APIs default to
-`ExactUnifier`; use `--exact-only` with the CLI for offline exact execution. Optional pyjev support is
-for same-fact wording compatibility, not a requirement for the workflows below.
+The base installation is enough for deterministic inference. Python APIs and the CLI use `ExactUnifier` by default, so the quickstart works offline without pyjev. Use `--semantic` to opt into optional pyjev same-fact matching; install it with `python -m pip install 'inferlingo[jev]'`. The legacy `--exact-only` option remains an alias for the exact default.
 
 ## Run the release policy example
 
@@ -50,13 +48,13 @@ rules:
 
 ```bash
 inferlingo run examples/release_policy.nl "checkout is release-ready?" \
-  --facts build_facts.nl --facts security_facts.nl --exact-only --explain
+  --facts build_facts.nl --facts security_facts.nl --explain
 ```
 
 `--rules` can similarly add more rule files. Existing positional usage remains valid:
 
 ```bash
-inferlingo run examples/birds.nl "{bird} can fly?" --exact-only --explain
+inferlingo run examples/birds.nl "{bird} can fly?" --explain
 ```
 
 ## Embed a reusable rule set

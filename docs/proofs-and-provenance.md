@@ -29,7 +29,7 @@ result = rules.ask_sync(
             "{service} has passing tests",
             {"service": "checkout"},
             provenance=Provenance(source="ci/test-results.json", line=12, kind="ci"),
-        )
+        ),
         Fact("{service} has an approved change", {"service": "checkout"}),
         Fact("{service} has acceptable vulnerability status", {"service": "checkout"}),
     ],

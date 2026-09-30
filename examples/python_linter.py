@@ -116,8 +116,7 @@ def main() -> None:
         print("No review findings.")
         return
     for solution in result.solutions:
-        print(f"Function {solution.bindings['fn']} needs review")
-        print(solution.proof.render())
+        print(solution.explain())
 
 
 if __name__ == "__main__":

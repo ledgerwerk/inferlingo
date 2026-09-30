@@ -258,44 +258,57 @@ class PyJevUnifier:
         )
 
     async def _semantic_unify_many(self, goal: str, candidates: Sequence[str]) -> tuple[Unification, ...]:
-        if not hasattr(self._jev, "run"):
+        if not candidates:
+            return ()
+        if not hasattr(self._jev, "evaluate"):
             return tuple(await asyncio.gather(*(self._semantic_unify(goal, candidate) for candidate in candidates)))
         try:
-            from pyjev.compile import build_choice, build_noul
+            from pyjev.decisions import BundleDecision, ChoiceDecision, NoulDecision
         except ImportError:  # pragma: no cover - injected clients may not install pyjev
             return tuple(await asyncio.gather(*(self._semantic_unify(goal, candidate) for candidate in candidates)))
 
-        variables = list(dict.fromkeys(variables_in(goal)))
-        for candidate in candidates:
-            variables.extend(variable for variable in variables_in(candidate) if variable not in variables)
         state = {
             "definition": self.SAME_FACT,
             "variables": self.VARIABLES,
             "goal": goal,
-            "candidates": {f"c{i}": c for i, c in enumerate(candidates)},
+            "candidates": {f"c{i}": candidate for i, candidate in enumerate(candidates)},
         }
         phase_a: dict[str, Any] = {}
         binding_labels: dict[str, tuple[int, str]] = {}
         for index, candidate in enumerate(candidates):
             label = f"align:c{index}"
-            phase_a[label] = build_noul(f"Could candidate c{index} state the same fact as the goal? {self.SAME_FACT}")
+            phase_a[label] = NoulDecision(
+                name=label,
+                question=f"Could candidate c{index} state the same fact as the goal? {self.SAME_FACT}",
+            )
             for variable in variables_in(goal):
                 key = f"bind:c{index}:goal:{variable}"
-                phrases = candidate_phrases(candidate) + [self.NONE]
-                phase_a[key] = build_choice(
-                    f"Which phrase in candidate c{index} fills goal variable {variable}?",
-                    {str(i): value for i, value in enumerate(phrases)},
+                phrases = candidate_phrases(candidate)
+                if not phrases:
+                    continue
+                options = {str(i): phrase for i, phrase in enumerate(phrases)}
+                options[self.NONE] = "No offered phrase is the value of this variable"
+                phase_a[key] = ChoiceDecision(
+                    name=key,
+                    question=f"Which phrase in candidate c{index} fills goal variable {variable}?",
+                    options=options,
                 )
                 binding_labels[key] = (index, variable)
             for variable in variables_in(candidate):
                 key = f"bind:c{index}:candidate:{variable}"
-                phrases = candidate_phrases(goal) + [self.NONE]
-                phase_a[key] = build_choice(
-                    f"Which phrase in the goal fills candidate variable {variable}?",
-                    {str(i): value for i, value in enumerate(phrases)},
+                phrases = candidate_phrases(goal)
+                if not phrases:
+                    continue
+                options = {str(i): phrase for i, phrase in enumerate(phrases)}
+                options[self.NONE] = "No offered phrase is the value of this variable"
+                phase_a[key] = ChoiceDecision(
+                    name=key,
+                    question=f"Which phrase in the goal fills candidate variable {variable}?",
+                    options=options,
                 )
                 binding_labels[key] = (index, variable)
-        response_a = await self._run_bundle(state, phase_a)
+        decision_a = BundleDecision(name="inferlingo-align", questions=phase_a)
+        response_a = await self._run_bundle(state, decision_a)
         survivors: list[tuple[int, dict[str, str], str, str]] = []
         for index, candidate in enumerate(candidates):
             alignment = _result_value(response_a, f"align:c{index}", 0.0)
@@ -325,28 +338,48 @@ class PyJevUnifier:
                 {name: value for name, value in bindings.items() if f"{{{name}}}" in candidate},
             )
             survivors.append((index, bindings, filled_goal, filled_candidate))
-        if not survivors:
-            usage = BackendUsage(
-                requests=1,
-                questions=len(phase_a),
-                model=self.model,
+        phase_a_usage = _backend_usage((response_a,), len(phase_a))
+        output = [
+            Unification(
+                False,
+                method="jev",
+                confidence=0.0,
+                calls=1,
+                usage=phase_a_usage,
             )
-            return tuple(Unification(False, method="jev", confidence=0.0, calls=1, usage=usage) for _ in candidates)
+            for _ in candidates
+        ]
+        if not survivors:
+            return tuple(output)
         phase_b: dict[str, Any] = {}
         for index, _bindings, _filled_goal, _filled_candidate in survivors:
-            phase_b[f"relation:c{index}"] = build_choice(
-                f"How does candidate c{index} relate to the goal?",
-                self.RELATIONS,
+            relation_label = f"relation:c{index}"
+            phase_b[relation_label] = ChoiceDecision(
+                name=relation_label,
+                question=f"How does candidate c{index} relate to the goal?",
+                options=self.RELATIONS,
             )
-            phase_b[f"participants:c{index}"] = build_noul(
-                "Do the two statements refer to exactly the same people and things?"
+            participants_label = f"participants:c{index}"
+            phase_b[participants_label] = NoulDecision(
+                name=participants_label,
+                question="Do the two statements refer to exactly the same people and things?",
             )
-        response_b = await self._run_bundle({"variables": self.VARIABLES}, phase_b)
-        output: list[Unification] = [Unification(False, method="jev", confidence=0.0) for _ in candidates]
+        phase_b_state = {
+            "definition": self.SAME_FACT,
+            "variables": self.VARIABLES,
+            "pairs": {
+                f"c{index}": {"goal": filled_goal, "candidate": filled_candidate}
+                for index, _bindings, filled_goal, filled_candidate in survivors
+            },
+        }
+        decision_b = BundleDecision(name="inferlingo-verify", questions=phase_b)
+        response_b = await self._run_bundle(phase_b_state, decision_b)
+        batch_usage = _backend_usage((response_a, response_b), len(phase_a) + len(phase_b))
         for index, bindings, filled_goal, filled_candidate in survivors:
-            relation = _result_value(response_b, f"relation:c{index}", "different")
+            relation_label = f"relation:c{index}"
+            relation = _result_value(response_b, relation_label, "different")
             participants = float(_result_value(response_b, f"participants:c{index}", 0.0))
-            p_same = float(_result_probability(response_b, f"relation:c{index}", "same"))
+            p_same = _result_probability(response_b, relation_label, "same")
             checks = (
                 Check(
                     f'Does "{filled_candidate}" state the same fact as "{filled_goal}"?',
@@ -372,20 +405,17 @@ class PyJevUnifier:
                 ),
                 checks=checks,
                 calls=2,
-                usage=BackendUsage(
-                    requests=2,
-                    questions=len(phase_a) + len(phase_b),
-                    model=self.model,
-                ),
+                usage=batch_usage,
             )
         return tuple(output)
 
-    async def _run_bundle(self, state: Any, questions: dict[str, Any]) -> dict[str, Any]:
+    async def _run_bundle(self, state: Any, decision: Any) -> Any:
         async with self._semaphore:
-            return await self._jev.run(state=state, questions=questions, model=self.model)
+            return await self._jev.evaluate(decision, state=state, model=self.model)
 
     async def _semantic_unify(self, goal: str, candidate: str) -> Unification:
         calls = 0
+        backend_results: list[Any] = []
         checks: list[Check] = []
         state = {"variables": self.VARIABLES, "goal": goal, "candidate": candidate}
 
@@ -394,6 +424,7 @@ class PyJevUnifier:
             state=state,
         )
         calls += 1
+        backend_results.append(match)
         p_match = float(match.value)
         checks.append(
             Check(
@@ -410,6 +441,7 @@ class PyJevUnifier:
                 note="Alignment rejected the pair before variable binding.",
                 checks=tuple(checks),
                 calls=calls,
+                usage=_backend_usage(backend_results, calls),
             )
 
         bindings: dict[str, str] = {}
@@ -421,7 +453,7 @@ class PyJevUnifier:
 
         async def choose_binding(variable: str, side: str, phrases: list[str]):
             if not phrases:
-                return variable, None, 0
+                return variable, None, 0, None
             labels = {f"p{index}": phrase for index, phrase in enumerate(phrases)}
             criteria: dict[str, Any] = {label: phrase for label, phrase in labels.items()}
             criteria[self.NONE] = "None of these phrases is the value of the variable"
@@ -434,12 +466,14 @@ class PyJevUnifier:
                 choices=criteria,
             )
             selected = None if result.value == self.NONE else labels.get(result.value)
-            return variable, selected, 1
+            return variable, selected, 1, result
 
         if slots:
             picks = await asyncio.gather(*(choose_binding(*slot) for slot in slots))
-            for variable, selected, used_calls in picks:
+            for variable, selected, used_calls, response in picks:
                 calls += used_calls
+                if response is not None:
+                    backend_results.append(response)
                 if selected is None:
                     continue
                 if not bind(variable, selected, bindings):
@@ -450,6 +484,7 @@ class PyJevUnifier:
                         note=f'Binding {variable} to "{selected}" conflicts with another binding.',
                         checks=tuple(checks),
                         calls=calls,
+                        usage=_backend_usage(backend_results, calls),
                     )
 
         filled_goal = substitute(goal, bindings)
@@ -463,6 +498,7 @@ class PyJevUnifier:
                 note="With the variables filled in, the wording is identical.",
                 checks=tuple(checks),
                 calls=calls,
+                usage=_backend_usage(backend_results, calls),
             )
 
         verify_state = {
@@ -484,6 +520,7 @@ class PyJevUnifier:
         )
         relation, participants = await asyncio.gather(relation_task, participants_task)
         calls += 2
+        backend_results.extend((relation, participants))
 
         p_same = float(relation.probabilities.get("same", 0.0))
         p_participants = float(participants.value)
@@ -519,6 +556,7 @@ class PyJevUnifier:
             note=note,
             checks=tuple(checks),
             calls=calls,
+            usage=_backend_usage(backend_results, calls),
         )
 
 
@@ -527,16 +565,26 @@ async def _resolved(value: Unification) -> Unification:
 
 
 def _result_value(results: Any, label: str, default: Any) -> Any:
-    value = results.get(label, default) if isinstance(results, dict) else default
-    if isinstance(value, dict):
-        return value.get("value", default)
-    return getattr(value, "value", value)
+    answer = results.answers.get(label)
+    return getattr(answer, "value", default)
 
 
 def _result_probability(results: Any, label: str, choice: str) -> float:
-    value = results.get(label) if isinstance(results, dict) else None
-    probabilities = value.get("probabilities", {}) if isinstance(value, dict) else getattr(value, "probabilities", {})
-    if isinstance(probabilities, dict):
-        return float(probabilities.get(choice, 0.0))
-    selected = _result_value(results, label, 0.0)
-    return float(selected) if isinstance(selected, (int, float)) else 0.0
+    answer = results.answers.get(label)
+    probabilities = getattr(answer, "probabilities", {})
+    return float(probabilities.get(choice, 0.0))
+
+
+def _backend_usage(responses: Sequence[Any], questions: int) -> BackendUsage:
+    usage: dict[str, int | float] = {}
+    for response in responses:
+        for key, value in response.usage.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                usage[key] = usage.get(key, 0) + value
+    return BackendUsage(
+        requests=len(responses),
+        questions=questions,
+        request_ids=tuple(response.request_id for response in responses if response.request_id),
+        model=responses[-1].model,
+        usage=usage,
+    )

@@ -19,7 +19,7 @@ syntax, and rule-safety errors exit with code 2.
 Run a query against a program, preserving the existing positional invocation:
 
 ```bash
-inferlingo run examples/birds.nl "{bird} can fly?" --exact-only
+inferlingo run examples/birds.nl "{bird} can fly?"
 ```
 
 Use `--rules FILE` to add rule files and `--facts FILE` to add runtime fact files. Repeat either flag
@@ -29,17 +29,15 @@ to compose multiple sources; fact files may contain facts only:
 inferlingo run policies/release.nl "checkout is release-ready?" \
   --rules policies/security.nl \
   --facts build_facts.nl --facts scanner_facts.nl \
-  --exact-only --explain
+  --explain
 ```
 
 The primary positional file and `--rules` files make up the reusable program; `--facts` clauses are
 runtime evidence for this run and are not persisted. Static facts are accepted in rule files for
 compatibility.
 
-The CLI `run` backend defaults to `PyJevUnifier`. Pass `--exact-only` to select deterministic
-`ExactUnifier`, available in the base installation and guaranteed not to contact a semantic backend.
-The Python `KnowledgeBase` and `RuleSet` APIs default to exact unification unless a caller supplies
-another unifier.
+By default, CLI `run` uses `ExactUnifier`, matching the Python APIs. This deterministic mode works in the base installation and never contacts a semantic backend. Use `--semantic` to explicitly opt in to `PyJevUnifier`; this requires `pip install 'inferlingo[jev]'`.
+`--exact-only` remains accepted as a compatibility alias for the default. The two flags are mutually exclusive.
 
 ## `inferlingo test PROGRAM CASES.toml`
 
@@ -99,9 +97,9 @@ Options:
 
 ## Semantic options
 
-When semantic mode is enabled, configure `--model`, `--concurrency` (default 8),
-`--semantic-batch-size` (default 32), and `--cache-size` (default 2048). These options are irrelevant
-with `--exact-only` and to `inferlingo test`.
+When `inferlingo run` uses `--semantic`, configure `--model`, `--concurrency` (default 8),
+`--semantic-batch-size` (default 32), and `--cache-size` (default 2048). These options have no effect
+in the default exact mode or with `inferlingo test`.
 
 ## Search limits
 

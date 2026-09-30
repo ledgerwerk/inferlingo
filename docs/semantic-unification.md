@@ -8,6 +8,16 @@ Install it with:
 python -m pip install 'inferlingo[jev]'
 ```
 
+## CLI opt-in
+
+The CLI defaults to exact, offline inference, just like the Python APIs. Use `--semantic` to opt into the optional backend:
+
+```bash
+inferlingo run examples/family.nl "Homer is a parent of Lisa?" --semantic --explain
+```
+
+The `--semantic` option requires the Jev extra. `--exact-only` remains accepted as a compatibility alias for the exact default.
+
 Authentication and provider configuration belong to pyjev and its underlying Jev SDK. InferLingo
 does not define a second credential system.
 
@@ -55,6 +65,7 @@ A `Unification` preserves its method, confidence, individual `Check` values, bac
 IDs when available, and cache status. A semantic `ProofStep` can carry the same diagnostic data.
 `Solution.semantic_confidences` and `minimum_semantic_confidence` expose confidence signals from
 semantic proof steps.
+`BackendUsage.requests` counts backend requests, `questions` counts evaluated questions, and `usage` sums numeric usage fields across those requests. Request IDs retain request order when pyjev supplies them. Cache hits retain the original backend metadata, set `cached`, and report zero new calls on `Unification.calls`.
 
 These values describe backend judgments and checks. They are not probabilities that the complete
 logical theorem is true. The application decides what policy to apply.

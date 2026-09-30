@@ -3,20 +3,20 @@ schema_version: 2
 object_type: release
 versioning:
   schema_version: 1
-  revision: 12
-version: 0.1.0
-status: released
+  revision: 1
+version: 0.1.1
+status: planned
 history_state: curated
-title: InferLingo 0.1.0
-released_at: "2026-09-21"
-previous_version: null
+title: InferLingo 0.1.1
+released_at: null
+previous_version: 0.1.0
 cancel_reason: null
 superseded_by: null
 changelog_file: docs/changelog.md
 boundary_ref: null
 source_refs: []
 source_count: null
-entry_count: 10
+entry_count: 0
 artifact_count: 0
 git_base_ref: null
 git_base_sha: null

@@ -195,10 +195,15 @@ def run_program(
         readable=True,
         help="Runtime fact file; repeat to combine evidence sources.",
     ),
+    semantic: bool = typer.Option(
+        False,
+        "--semantic",
+        help="Opt in to semantic matching through the optional Jev backend.",
+    ),
     exact_only: bool = typer.Option(
         False,
         "--exact-only",
-        help="Never contact Jev; differently worded terms do not unify.",
+        help="Compatibility alias for exact, offline inference (the default).",
     ),
     explain: bool = typer.Option(False, "--explain", help="Print the proof for each successful solution."),
     trace: bool = typer.Option(False, "--trace", help="Print every proof and unification attempt."),
@@ -215,6 +220,10 @@ def run_program(
 ) -> None:
     """Run a goal against a natural-language logic program."""
 
+    if semantic and exact_only:
+        typer.echo("error: --semantic and --exact-only cannot be used together", err=True)
+        raise typer.Exit(2)
+
     async def execute() -> int:
         try:
             parsed_program = _load_input_program([program, *(additional_rules or [])], fact_files or [])
@@ -226,14 +235,14 @@ def run_program(
         unifier = None
         try:
             unifier = (
-                ExactUnifier()
-                if exact_only
-                else PyJevUnifier(
+                PyJevUnifier(
                     model=model,
                     concurrency=concurrency,
                     semantic_batch_size=semantic_batch_size,
                     cache_size=cache_size,
                 )
+                if semantic
+                else ExactUnifier()
             )
             result = await NLEngine(parsed_program, unifier).run(
                 parsed_query,

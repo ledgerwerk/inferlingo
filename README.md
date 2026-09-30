@@ -32,14 +32,19 @@ your application decides what to do
 python -m pip install inferlingo
 ```
 
-The base package is usable offline and uses exact unification by default in the Python API. The CLI
-preserves its semantic-capable default for `run`; pass `--exact-only` for deterministic, offline
-execution. Install optional semantic support only when differently worded statements may express the
-same fact:
+The base package is usable offline and uses exact unification by default in both Python APIs and the CLI. This quickstart needs no Jev extra or network access:
+
+```bash
+inferlingo run examples/birds.nl "{bird} can fly?"
+```
+
+Use `--semantic` only when differently worded statements may express the same fact. Install the optional backend with:
 
 ```bash
 python -m pip install 'inferlingo[jev]'
 ```
+
+Existing CLI scripts may keep using `--exact-only`; it remains a compatibility alias for the default.
 
 Optional pyjev matching compares candidate facts. It does not invent logical implications or replace
 explicit policy rules. For authorization and other high-consequence decisions, prefer exact inference.

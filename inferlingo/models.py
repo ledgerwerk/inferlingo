@@ -189,10 +189,14 @@ class Proof:
             elif step.kind == "success":
                 lines.append(f"{indent}{goal}")
                 rule = step.rule_name or step.clause or "unnamed rule"
+                rule = substitute(rule, variable_bindings) if variable_bindings and "{" in rule else rule
                 suffix = f" ({location})" if location else ""
                 lines.append(f"{indent}  via rule: {rule}{suffix}")
                 if step.rule_description:
-                    lines.append(f"{indent}    {step.rule_description}")
+                    description = step.rule_description
+                    if variable_bindings and "{" in description:
+                        description = substitute(description, variable_bindings)
+                    lines.append(f"{indent}    {description}")
             elif step.kind == "failure":
                 lines.append(f"{indent}not proved: {goal}")
                 if step.note:

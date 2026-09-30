@@ -11,6 +11,54 @@ facts = [
 ]
 
 [[case]]
+name = "failing tests produce a blocker"
+query = "billing has blocker {reason}?"
+expect_bindings = [{ reason = "tests failing" }]
+facts = ["billing has failing tests."]
+
+[[case]]
+name = "required change approval produces a blocker"
+query = "billing has blocker {reason}?"
+expect_bindings = [{ reason = "change not approved" }]
+facts = ["billing needs change approval."]
+
+[[case]]
+name = "critical vulnerabilities produce a blocker"
+query = "billing has blocker {reason}?"
+expect_bindings = [{ reason = "critical vulnerabilities" }]
+facts = ["billing has critical vulnerabilities."]
+
+[[case]]
+name = "release freeze produces a blocker"
+query = "checkout has blocker {reason}?"
+expect_bindings = [{ reason = "release freeze" }]
+facts = ["checkout is frozen."]
+
+[[case]]
+name = "missing passing tests blocks readiness"
+query = "checkout is release-ready?"
+expect = false
+facts = [
+  "checkout has an approved change.",
+  "checkout has acceptable vulnerability status.",
+]
+[[case]]
+name = "missing approved change blocks readiness"
+query = "checkout is release-ready?"
+expect = false
+facts = [
+  "checkout has passing tests.",
+  "checkout has acceptable vulnerability status.",
+]
+[[case]]
+name = "missing acceptable vulnerability status blocks readiness"
+query = "checkout is release-ready?"
+expect = false
+facts = [
+  "checkout has passing tests.",
+  "checkout has an approved change.",
+]
+[[case]]
 name = "release freeze blocks readiness"
 query = "checkout is release-ready?"
 expect = false
@@ -20,9 +68,3 @@ facts = [
   "checkout has acceptable vulnerability status.",
   "checkout is frozen.",
 ]
-
-[[case]]
-name = "critical vulnerability becomes a blocker"
-query = "billing has blocker {reason}?"
-expect_bindings = [{ reason = "critical vulnerabilities" }]
-facts = ["billing has critical vulnerabilities."]

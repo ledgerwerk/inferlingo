@@ -17,7 +17,7 @@ async def main() -> None:
     )
     result = await kb.ask("Function {fn} may swallow errors?")
     for solution in result.solutions:
-        print(solution.bindings, solution.proof.render())
+        print(solution.explain())
 
 
 if __name__ == "__main__":
