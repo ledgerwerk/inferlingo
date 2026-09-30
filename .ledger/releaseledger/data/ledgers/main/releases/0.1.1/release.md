@@ -3,12 +3,12 @@ schema_version: 2
 object_type: release
 versioning:
   schema_version: 1
-  revision: 4
+  revision: 6
 version: 0.1.1
-status: released
+status: planned
 history_state: curated
 title: InferLingo 0.1.1
-released_at: "2026-09-30"
+released_at: null
 previous_version: 0.1.0
 cancel_reason: null
 superseded_by: null
